@@ -9,8 +9,7 @@ logger = setup_logger()
 
 
 def apply_config_rsEGFP2() -> dict:
-    homepath = load_homepath()
-    folderloc = homepath + "meteor/test/data/"
+    folderloc = "../data/"
     dataloc_dark = folderloc + "scaled-test-data.mtz"
     dataloc_light = folderloc + "scaled-test-data.mtz"
     pdbloc_dark = folderloc + "8a6g.pdb"
@@ -39,8 +38,7 @@ def apply_config_rsEGFP2() -> dict:
 
 
 def load_all_PL_paths(add_light=False) -> list[str]:
-    homepath = load_homepath()
-    folderloc = homepath + "data/photolyase/"
+    folderloc = "../data/photolyase/"
     datalocs_light = []
     folders = os.listdir(folderloc)
     changing_bits = []

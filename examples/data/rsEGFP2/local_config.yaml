@@ -4,7 +4,6 @@ general:
   output_base_folder: "."
   output_folder: "./tmp/"
   high_resolution_limit: 1.6
-  data_type: "triggered"
 
 input_files:
   map_dark: "scaled-test-data.mtz"      

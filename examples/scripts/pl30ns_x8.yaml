@@ -1,0 +1,20 @@
+general:
+  name_machine: "PL_30ns"
+  name_human: "Photolyase 30 ns"
+  output_base_folder: "."
+  output_folder: "./tmp/"
+  high_resolution_limit: 2.6
+
+input_files:
+  data_folder: "../data/photolyase"
+  map_dark: "${input_files.data_folder}/1_superdark/superdark_deposit.mtz"      
+  map_diff: "${input_files.data_folder}/7_30ns/30ns-dark_kwt_ded.mtz"
+  pdb_dark: "${input_files.data_folder}/1_superdark/superdark_deposit.pdb"
+  columns_dark: 
+    amplitude_column: "F-obs-filtered"
+    phase_column: "PHIF-model"
+    uncertainty_column: "SIGF-obs-filtered"
+  columns_diff:
+    amplitude_column: "KFOFOWT"
+    phase_column: "PHIKFOFOWT"
+    uncertainty_column: "SIGF"

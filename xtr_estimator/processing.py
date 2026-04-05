@@ -821,7 +821,8 @@ def get_maps_diff(config, map_dark=None, old=False):
 
     ds_diff = rs.read_mtz(config["input_files"]["map_diff"])
     diffmap = rsmap.Map(ds_diff, **config["input_files"]["columns_diff"])
-    compute_dHKL = ds_diff.compute_dHKL()
-    dmin = np.min(compute_dHKL["dHKL"])
+    dmin_diffmap = np.min(diffmap.compute_dHKL())
+    dmin = max(dmin_diffmap, config["general"]["high_resolution_limit"])
     map_dark = cut_resolution(map_dark, high_resolution_limit=dmin)
+    diffmap = cut_resolution(diffmap, high_resolution_limit=dmin)
     return map_dark, diffmap

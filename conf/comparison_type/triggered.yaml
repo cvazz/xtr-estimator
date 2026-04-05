@@ -1,0 +1,9 @@
+general:
+  comparison_type: "triggered"
+
+input_files:
+  map_triggered: ???
+  columns_triggered:
+    amplitude_column="F"
+    phase_column="PHI"
+    uncertainty_column="SIGF"

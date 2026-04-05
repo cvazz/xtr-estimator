@@ -1,0 +1,9 @@
+general:
+  comparison_type: "diff"
+
+input_files:
+  map_diff: ???
+  columns_diff:
+    amplitude_column="KFOFOWT"
+    phase_column="PHIKFOFOWT"
+    uncertainty_column="SIGF"
