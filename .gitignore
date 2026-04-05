@@ -1,0 +1,7 @@
+.DS_STORE
+examples/autoshifted_map.mtz
+xtr_estimator/outputs
+# xtr_estimator/*pyc
+__pycache__/
+xtr_estimator.egg-info/
+examples/scripts/tmp/*

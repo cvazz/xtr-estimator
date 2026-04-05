@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xtr-estimator"
+version = "0.1.0"
+description = "estimate extrapolation factors for time resolved crystallography difference maps"
+readme = "README.md"
+authors = [
+    { name = "Sebastian Bielfeldt", email = "sebastian.bielfeldt@desy.de" },
+    { name = "Thomas Lane", email = "thomas.joseph.lane@gmail.com" }
+]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "meteor-maps >= 0.4.1",
+    "matplotlib >= 3.9.0",
+    "jupyterlab >= 4.4.0",
+    "hydra-core >= 1.3.0", 
+    "pyqt6 >= 6.5.0",
+]
+
+[tool.setuptools]
+# This tells setuptools that the "xtr_estimator" package is 
+# located in the current directory (.)
+packages = ["xtr_estimator"]

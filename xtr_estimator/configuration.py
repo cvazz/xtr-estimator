@@ -1,0 +1,185 @@
+import os
+from hydra import initialize, compose
+from omegaconf import OmegaConf, DictConfig
+
+
+def load_homepath():
+    # This function returns the path in which t
+    current_path = os.getcwd()
+    path_parts = current_path.split(os.sep)
+    idx = path_parts.index("time_resolved")
+    homepath = os.sep.join(path_parts[: idx + 1]) + "/"
+    return homepath
+
+
+def load_figurepath():
+    return r"/Users/sbielfel/Dropbox/Apps/Overleaf/Occupancy Determination/figs/"
+
+
+def minimal_masking_config():
+    return {
+        "sigma": 3,
+        "min_blob_size": 0.03,  # in A^3
+        "blocking_radius": 0.1,
+        "blocking_percentile": 1,
+        "exclude_solvent": False,
+        "dark_size_threshold": 0.0,
+        "exclude_large_occupancy_outliers": False,
+    }
+
+
+def get_base_config():
+    return {
+        "masking": {
+            "sigma": 3,
+            "min_blob_size": 3,  # in A^3
+            "blocking_radius": 1.5,
+            "blocking_percentile": 95,
+            "exclude_solvent": True,
+            "dark_size_threshold": 0.1,
+            "exclude_positive_diffmap": True,
+            "exclude_large_occupancy_outliers": False,
+        },
+        "map_processing": {
+            "diffmap_type": "tv",  # "kweighted", "tv", or "vanilla"
+            "dark_mean_correction": True,
+            "diffmap_mean_correction": True,
+            "diffmap_v2_correction": False,
+            "preprocessing": False,
+        },
+        "plot": {
+            "show_ignored_voxels": True,
+            "set_ylim": False,
+            "is_composite": False,
+            "std_cutoff": 3.0,
+            "solvent_density": 0.4,
+            "minimum_datapoints": 10,
+        },
+    }
+
+
+def get_file_config(
+    dataloc_dark: str,
+    dataloc_light: str,
+    pdbloc_dark: str,
+    columns_dark: dict,
+    columns_triggered: dict,
+    high_resolution_limit: float = 0.1,
+    pdbloc_triggered: str | None = None,
+    name_machine: str = "unnamed_experiment",
+    name_human: str | None = None,
+    outpath: str | None = None,
+):
+    config = {
+        "general": {
+            "name_human": name_human if name_human else name_machine,
+            "name_machine": name_machine,
+            "output_base_folder": (
+                outpath if outpath else load_homepath() + "tmp/diffmap_data/"
+            ),
+            "map_sampling": 3,
+            "high_resolution_limit": high_resolution_limit,
+            "data_type": "triggered",  # "triggered" or "diffmap"
+        },
+        "input_files": {
+            "map_dark": dataloc_dark,
+            "map_triggered": dataloc_light,
+            "pdb_dark": pdbloc_dark,
+            "pdb_triggered": pdbloc_triggered,
+            "columns_dark": columns_dark,
+            "columns_triggered": columns_triggered,
+            "impose_dark_phases": True,
+            "columns_are_ints": False,
+        },
+    } | get_base_config()
+
+    output_folder = config["general"]["output_base_folder"] + "/"
+    config["general"]["output_folder"] = output_folder
+    config["general"]["pdbloc_dark"] = pdbloc_dark
+    return config
+
+
+def get_custom_config(
+    dataloc_dark: str,
+    dataloc_light: str,
+    pdbloc_dark: str,
+    columns_dark: dict,
+    columns_triggered: dict,
+    high_resolution_limit: float = 0.1,
+    pdbloc_triggered: str | None = None,
+    name_machine: str = "unnamed_experiment",
+    name_human: str | None = None,
+    outpath: str | None = None,
+    config_path: str = "../conf",
+) -> DictConfig:
+
+    # 1. Load the base config from YAML
+    with initialize(version_base=None, config_path=config_path):
+        cfg = compose(config_name="config")
+
+    # 2. Define your overrides as a standard Python dictionary
+    # Note: We match the structure of your YAML exactly
+    overrides = {
+        "general": {
+            "name_machine": name_machine,
+            "name_human": name_human or name_machine,
+            "high_resolution_limit": high_resolution_limit,
+        },
+        "input_files": {
+            "map_dark": dataloc_dark,
+            "map_triggered": dataloc_light,
+            "pdb_dark": pdbloc_dark,
+            "pdb_triggered": pdbloc_triggered,
+            "columns_dark": columns_dark,
+            "columns_triggered": columns_triggered,
+        },
+    }
+
+    # Add optional outpath logic
+    if outpath:
+        overrides["general"]["output_base_folder"] = outpath
+
+    # 3. Merge the dictionary into the Hydra config
+    # This replaces values in 'cfg' with values from 'overrides'
+    cfg = OmegaConf.merge(cfg, overrides)
+
+    # 4. Validate
+    # This ensures all ${interpolations} work and no ??? remain
+    OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
+
+    return cfg
+
+
+def get_file_config_diff_only(
+    dataloc_dark: str,
+    dataloc_diff: str,
+    pdbloc_dark: str,
+    columns_dark: dict,
+    columns_diff: dict,
+    pdbloc_light: str | None = None,
+    high_resolution_limit: float = 0.1,
+    name_machine: str = "unnamed_experiment",
+    name_human: str | None = None,
+    outpath: str | None = None,
+):
+    config = {
+        "general": {
+            "name_human": name_human if name_human else name_machine,
+            "name_machine": name_machine,
+            "output_base_folder": (
+                outpath if outpath else load_homepath() + "tmp/diffmap_data/"
+            ),
+            "map_sampling": 3,
+            "high_resolution_limit": high_resolution_limit,
+            "data_type": "diff",  # "triggered" or "diffmap"
+        },
+        "input_files": {
+            "map_dark": dataloc_dark,
+            "map_diff": dataloc_diff,
+            "pdb_dark": pdbloc_dark,
+            "pdb_triggered": pdbloc_light,
+            "columns_dark": columns_dark,
+            "columns_diff": columns_diff,
+        },
+    } | get_base_config()
+    return config

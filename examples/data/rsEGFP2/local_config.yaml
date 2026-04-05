@@ -1,0 +1,20 @@
+general:
+  name_machine: "rsEGFP2"
+  name_human: "rsEGFP2"
+  output_base_folder: "."
+  output_folder: "./tmp/"
+  high_resolution_limit: 1.6
+  data_type: "triggered"
+
+input_files:
+  map_dark: "scaled-test-data.mtz"      
+  map_triggered: "scaled-test-data.mtz"
+  pdb_dark: "8a6g.pdb"
+  columns_dark: 
+    amplitude_column: "F_off"
+    phase_column: "PHIC_nochrom"
+    uncertainty_column: "SIGF_off"
+  columns_triggered:
+    amplitude_column: "F_on"
+    phase_column: "PHIC_chrom"
+    uncertainty_column: "SIGF_on"
