@@ -7,13 +7,13 @@ def load_homepath():
     # This function returns the path in which t
     current_path = os.getcwd()
     path_parts = current_path.split(os.sep)
-    idx = path_parts.index("time_resolved")
+    idx = path_parts.index("xtr_estimator")
     homepath = os.sep.join(path_parts[: idx + 1]) + "/"
     return homepath
 
 
 def load_figurepath():
-    return r"/Users/sbielfel/Dropbox/Apps/Overleaf/Occupancy Determination/figs/"
+    return "."
 
 
 def minimal_masking_config():
@@ -119,6 +119,12 @@ def get_custom_config(
 
     # 2. Define your overrides as a standard Python dictionary
     # Note: We match the structure of your YAML exactly
+    
+    if columns_dark.get("ints_column", None) and columns_dark.get("amplitude_column", None):
+        raise ValueError("Cannot specify both 'ints_column' and 'amplitude_column' in columns_dark")
+    columns_are_ints = columns_dark.get("ints_column", None) is not None
+    col_name_dark = "columns_dark_ints" if columns_are_ints else"columns_dark"
+    col_name_triggered = "columns_triggered_ints" if columns_are_ints else "columns_triggered"
     overrides = {
         "general": {
             "name_machine": name_machine,
@@ -130,8 +136,9 @@ def get_custom_config(
             "map_triggered": dataloc_light,
             "pdb_dark": pdbloc_dark,
             "pdb_triggered": pdbloc_triggered,
-            "columns_dark": columns_dark,
-            "columns_triggered": columns_triggered,
+            col_name_dark: columns_dark,
+            col_name_triggered: columns_triggered,
+            "columns_are_ints": columns_are_ints,
         },
     }
 

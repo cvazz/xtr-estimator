@@ -40,12 +40,15 @@ def convert_ints_to_sf2(
         cols["ints_column"],
         cols["int_uncertainty_column"],
     )  # output_columns=(cols["amplitude_column"], cols["uncertainty_column"]))
-    cols.pop("ints_column")
-    cols.pop("int_uncertainty_column")
+    cols = {
+        "amplitude_column": "F",
+        "uncertainty_column": "SIGF",
+        "phase_column": "PHIC",
+    }
     ds2[cols["amplitude_column"]] = ds2["FW-F"]
     ds2[cols["uncertainty_column"]] = ds2["FW-SIGF"]
     ds2[cols["phase_column"]] = map_dark_comp.phases
-    return ds2
+    return ds2, cols
 
 
 def get_maps(input_files_dict: dict) -> tuple[rsmap.Map, rsmap.Map]:
@@ -55,15 +58,19 @@ def get_maps(input_files_dict: dict) -> tuple[rsmap.Map, rsmap.Map]:
     ds_dark = rs.read_mtz(dataloc_dark)
 
     if input_files_dict["input_files"]["columns_are_ints"]:
-        dark_cols = input_files_dict["input_files"]["columns_dark"]
-        triggered_cols = input_files_dict["input_files"]["columns_triggered"]
+        dark_cols = input_files_dict["input_files"]["columns_dark_ints"]
+        triggered_cols = input_files_dict["input_files"]["columns_triggered_ints"]
         struc = gemmi.read_pdb(input_files_dict["input_files"]["pdb_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
             high_resolution_limit=input_files_dict["general"]["high_resolution_limit"],
         )
-        ds_dark = convert_ints_to_sf2(ds_dark, dark_cols, map_dark_comp)
-        ds_triggered = convert_ints_to_sf2(ds_triggered, triggered_cols, map_dark_comp)
+        ds_dark, dark_cols = convert_ints_to_sf2(ds_dark, dark_cols, map_dark_comp)
+        ds_triggered, triggered_cols = convert_ints_to_sf2(
+            ds_triggered, triggered_cols, map_dark_comp
+        )
+        input_files_dict["input_files"]["columns_dark"] = dark_cols
+        input_files_dict["input_files"]["columns_triggered"] = triggered_cols
     elif input_files_dict["input_files"]["columns_dark"]["phase_column"] == "MODEL":
         input_files_dict["input_files"]["columns_dark"]["phase_column"] = "PHIC"
         input_files_dict["input_files"]["columns_triggered"]["phase_column"] = "PHIC"
@@ -320,7 +327,7 @@ def autoshift_rsmap_old(
     # map_in.infer_mtz_dtypes(inplace=True)
     # map_in.sort_index()
     map_in.write_mtz("autoshifted_map.mtz")
-    #remove autoshifted_map.mtz after checking it, or move to a temp folder, or add option to save it
+    # remove autoshifted_map.mtz after checking it, or move to a temp folder, or add option to save it
     os.remove("autoshifted_map.mtz")
     return map_in, zero_freq
 
@@ -432,7 +439,7 @@ def calculate_rho_bulk(
         # 4. Return the low-resolution scaling error
         return error_metric_for_scaling(map_temp, map_exp)
 
-    print("Running 1D bounded optimization for rho_bulk...")
+    logger.info("Running 1D bounded optimization for rho_bulk...")
 
     # Use minimize_scalar for robust 1D valley-finding
     result = minimize_scalar(
@@ -443,7 +450,7 @@ def calculate_rho_bulk(
     )
 
     best_rho_bulk = result.x
-    print(f"Optimal rho_bulk: {best_rho_bulk:.4f} e-/Å³")
+    logger.info(f"Optimal rho_bulk: {best_rho_bulk:.4f} e-/Å³")
 
     # Optional plotting of the optimization landscape
     if plot:
@@ -484,7 +491,7 @@ def estimate_absolute_densities(
     Master function orchestrating the calculation of both rho_atom (protein offset)
     and rho_bulk (bulk solvent density).
     """
-    print(f"--- Calibrating Absolute Densities for {pdb_file} ---")
+    logger.info(f"--- Calibrating Absolute Densities for {pdb_file} ---")
 
     # 1. Extract metadata and numpy representations
     cell: gemmi.UnitCell = map_model.cell  # type: ignore
@@ -494,14 +501,14 @@ def estimate_absolute_densities(
     grid_shape = map_model_np.shape
 
     # 2. Generate Masks
-    print("Generating protein and solvent masks...")
+    logger.info("Generating protein and solvent masks...")
     protein_mask, solvent_mask = generate_masks(pdb_file, grid_shape, cell, spacegroup)
     # protein_mask = ~support_from_masker(pdb_file, map_dark_comp_np.shape)
 
     # 3. Calculate rho_atom (Mean shift in the protein region)
     rho_atom_shift = calculate_rho_atom(map_exp_np, map_model_np, protein_mask)
 
-    print(
+    logger.info(
         f"Estimated rho_atom offset (mean shift inside protein): {rho_atom_shift:.5f}"
     )
     rho_atom = map_model_np.mean()
@@ -606,8 +613,6 @@ def prepare_maps(
         high_resolution_limit=config["general"]["high_resolution_limit"],
         map_sampling=config["general"]["map_sampling"],
     )
-    print("comp", np.min(map_dark_comp.compute_dHKL()))
-    print("dark", np.min(unscaled_dark.compute_dHKL()))
 
     map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
     map_triggered = scale_maps(

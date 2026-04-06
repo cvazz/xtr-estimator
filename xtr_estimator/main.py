@@ -35,7 +35,9 @@ def get_config(data_yaml=None, overrides=None):
 
     with initialize(version_base=None, config_path="../conf"):
         # Load the base + the mode-specific schema
-        cfg = compose(config_name="config", overrides=[f"general.comparison_type={mode}"])
+        cfg = compose(
+            config_name="config", overrides=[f"general.comparison_type={mode}"]
+        )
         print(cfg.general)
 
     # 2. Merge Local YAML if provided
@@ -63,16 +65,18 @@ def execute_main(config: DictConfig | dict) -> None:
     # Ensure we have regular dict
     if isinstance(config, DictConfig):
         config = OmegaConf.to_container(config, resolve=True)
-    if config['general']['comparison_type'] == 'diff':
+    if config["general"]["comparison_type"] == "diff":
         map_dark, diffmap = get_maps_diff(config)
         diffmap_np = diffmap.to_3d_numpy_map(map_sampling=3)
         map_dark_np = map_dark.to_3d_numpy_map(map_sampling=3)
         print(diffmap_np.shape, map_dark_np.shape)
-    elif config['general']['comparison_type'] == 'triggered':
+    elif config["general"]["comparison_type"] == "triggered":
         unscaled_dark, unscaled_triggered = get_maps(config)
         diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
     else:
-        raise ValueError(f"Unknown comparison type: {config['general']['comparison_type']}")
+        raise ValueError(
+            f"Unknown comparison type: {config['general']['comparison_type']}"
+        )
     inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
     _ = plot_extrapolation_estimate_new(diffmap, map_dark, inclusion_mask, config)
     plt.show()

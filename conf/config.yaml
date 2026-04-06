@@ -43,13 +43,19 @@ input_files:
   pdb_dark: ???
   pdb_triggered: null
   columns_dark: 
-    amplitude_column: ???
-    phase_column: ???
-    uncertainty_column: ???
+    amplitude_column: null
+    phase_column: null
+    uncertainty_column: null
+  columns_dark_ints:
+    ints_column: null
+    int_uncertainty_column: null
   columns_triggered:
     amplitude_column: null
     phase_column: null
     uncertainty_column: null
+  columns_triggered_ints:
+    ints_column: null
+    int_uncertainty_column: null
   columns_diff:
     amplitude_column: null
     phase_column: null
