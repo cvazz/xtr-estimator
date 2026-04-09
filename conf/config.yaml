@@ -30,7 +30,7 @@ plot:
 general:
   name_machine: "unnamed_experiment"
   name_human: ${general.name_machine}
-  output_folder: "$./tmp/${general.name_machine}/"
+  output_folder: "./tmp/${general.name_machine}/"
   map_sampling: 3
   high_resolution_limit: 0.1
   pdbloc_dark: "${input_files.pdb_dark}"
