@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xtr-estimator"
-version = "0.2.0"
+version = "0.3.0"
 description = "estimate extrapolation factors for time resolved crystallography difference maps"
 readme = "README.md"
 authors = [

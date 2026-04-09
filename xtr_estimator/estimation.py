@@ -300,7 +300,7 @@ def create_plot_v3(
     return fig, ax, prediction_tuple
 
 
-def plot_extrapolation_estimate_new(
+def plot_extrapolation_estimate(
     diffmap: rsmap.Map,
     map_dark: rsmap.Map,
     inclusion_mask: np.ndarray,

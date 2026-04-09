@@ -582,15 +582,19 @@ def autoshift_rsmap(
 
 
 def processing_dict_2_binary(processing_dict) -> str:
-    key_names = [k for k in processing_dict.keys() if k not in ["diffmap_type"]]
+    key_names = [
+        k
+        for k in processing_dict.keys()
+        if k not in ["diffmap_type", "simple_dark_correction"]
+    ]
     key_names = sorted(key_names)
     binary_string = ""
 
     for key in key_names:
         binary_string += "1" if processing_dict[key] else "0"
-    if len(binary_string) != 4:
+    if len(binary_string) != 3:
         raise ValueError(
-            f"Expected 4 entries, got {len(binary_string)}. Keys were: {key_names}"
+            f"Expected 3 entries, got {len(binary_string)}. Keys were: {key_names}"
         )
     return binary_string
 
@@ -600,6 +604,52 @@ def diffmap_file_name(processing_config, general_config):
     evaluation_path_basis, name = get_meta_loc(general_config)
     diffmap_type = processing_config["diffmap_type"]
     return evaluation_path_basis + f"diffmap_{name}_{diffmap_type}_{binary_string}.mtz"
+
+
+def shift_mean(
+    map_dark: rsmap.Map,
+    map_triggered: rsmap.Map,
+    config: dict,
+    map_dark_comp: rsmap.Map,
+) -> tuple[rsmap.Map, rsmap.Map, float, float]:
+    if config["map_processing"]["simple_dark_correction"]:
+        diffmap_temp = combined_diffmap_calc(
+            map_dark,
+            map_triggered,
+            map_dark_comp,
+            processing_config=config["map_processing"] | {"preprocessing": True},
+            general_config=config["general"],
+            allow_saving=False,
+        )
+        diffmap_temp_np = diffmap_temp.to_3d_numpy_map(
+            map_sampling=config["general"]["map_sampling"]
+        )
+        diffmap_larger = np.abs(diffmap_temp_np) > 1 * diffmap_temp_np.std()
+        logger.info(f"Diffmap std: {diffmap_temp_np.std():.3f}")
+        logger.info(
+            f"diffmap larger voxel count: {np.sum(diffmap_larger)/diffmap_larger.size}"
+        )
+        map_dark, zero_freq_dark = autoshift_rsmap_old(
+            map_dark, config["general"], map_dark_comp
+        )
+        logger.info("calculating autoshift for triggered map... with extra mask")
+        map_triggered, zero_freq_triggered = autoshift_rsmap_old(
+            map_triggered, config["general"], map_dark_comp, diffmap_larger
+        )
+        logger.info("calculating autoshift for triggered map... done")
+    else:
+        map_dark, zero_freq_dark = autoshift_rsmap(
+            map_dark, config["general"], map_dark_comp
+        )
+        logger.info("calculating autoshift for triggered map... with extra mask")
+        map_triggered, zero_freq_triggered = autoshift_rsmap(
+            map_triggered,
+            config["general"],
+            map_dark_comp,  # diffmap_larger
+        )
+        logger.info("calculating autoshift for triggered map... done")
+        diffmap_temp = None
+    return map_dark, map_triggered, zero_freq_dark, zero_freq_triggered
 
 
 def prepare_maps(
@@ -618,51 +668,9 @@ def prepare_maps(
     map_triggered = scale_maps(
         reference_map=map_dark_comp, map_to_scale=unscaled_triggered
     )
-
-    if config["map_processing"]["dark_mean_correction"]:
-        if True:
-            diffmap_temp = combined_diffmap_calc(
-                map_dark,
-                map_triggered,
-                map_dark_comp,
-                processing_config=config["map_processing"] | {"preprocessing": True},
-                general_config=config["general"],
-                allow_saving=False,
-            )
-            diffmap_temp_np = diffmap_temp.to_3d_numpy_map(
-                map_sampling=config["general"]["map_sampling"]
-            )
-            diffmap_larger = np.abs(diffmap_temp_np) > 1 * diffmap_temp_np.std()
-            logger.info(f"Diffmap std: {diffmap_temp_np.std():.3f}")
-            logger.info(
-                f"diffmap larger voxel count: {np.sum(diffmap_larger)/diffmap_larger.size}"
-            )
-            map_dark, zero_freq_dark = autoshift_rsmap_old(
-                map_dark, config["general"], map_dark_comp
-            )
-            logger.info("calculating autoshift for triggered map... with extra mask")
-            map_triggered, zero_freq_triggered = autoshift_rsmap_old(
-                map_triggered, config["general"], map_dark_comp, diffmap_larger
-            )
-            logger.info("calculating autoshift for triggered map... done")
-        else:
-            map_dark, zero_freq_dark = autoshift_rsmap(
-                map_dark, config["general"], map_dark_comp
-            )
-            logger.info("calculating autoshift for triggered map... with extra mask")
-            map_triggered, zero_freq_triggered = autoshift_rsmap(
-                map_triggered,
-                config["general"],
-                map_dark_comp,  # diffmap_larger
-            )
-            logger.info("calculating autoshift for triggered map... done")
-            diffmap_temp = None
-    else:
-        zero_freq_dark = None
-        zero_freq_triggered = None
-        diffmap_temp = None
-
-    if not config["map_processing"]["diffmap_v2_correction"]:
+    diffmap_first = config["map_processing"]["calculate_diffmap_before_f000"]
+    dark_mean_correction = config["map_processing"]["dark_mean_correction"]
+    if diffmap_first or not dark_mean_correction:
         diffmap = combined_diffmap_calc(
             map_dark,
             map_triggered,
@@ -671,83 +679,20 @@ def prepare_maps(
             general_config=config["general"],
             allow_saving=True,
         )
-    else:
-        if config["map_processing"]["dark_mean_correction"]:
-            if diffmap_temp is None:
-                raise ValueError(
-                    "Diffmap temp not calculated but needed for dark mean correction"
+        if diffmap_first and dark_mean_correction:
+            if config["map_processing"]["simple_dark_correction"]:
+                map_dark, zero_freq_dark = autoshift_rsmap_old(
+                    map_dark, config["general"], map_dark_comp
                 )
-            diffmap = diffmap_temp
-        else:
-            raise ValueError("Diffmap not defined")
-    try:
-        logger.info(f"Diffmap zero frequency: {diffmap.loc[(0,0,0)]['F']}")  # type: ignore
-    except KeyError:
-        logger.info("Diffmap zero frequency was not set")
-    if config["map_processing"]["diffmap_mean_correction"]:
-        if config["map_processing"]["dark_mean_correction"]:
-            zero_freq_diff = zero_freq_triggered - zero_freq_dark  # type: ignore
-            zero_uncertainty = np.sqrt(
-                (zero_freq_dark * 0.1) ** 2 + (zero_freq_triggered * 0.1) ** 2  # type: ignore
-            )
-        else:
-            raise ValueError(
-                "Diffmap Correction can only be done if dark correction is done"
-            )
+            else:
+                map_dark, zero_freq_dark = autoshift_rsmap(
+                    map_dark, config["general"], map_dark_comp
+                )
 
-        diffmap.loc[(0, 0, 0)] = {
-            diffmap.amplitude_column_name: zero_freq_diff,
-            diffmap.phase_column_name: 0,
-            diffmap.uncertainties_column_name: zero_uncertainty,
-        }
-        logger.warning(f"Diffmap zero frequency: {zero_freq_diff}")
-
-    return diffmap, map_dark, map_triggered
-
-
-def prepare_maps_v2(
-    unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
-) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map]:
-
-    general_config = config["general"]
-    struc = gemmi.read_pdb(config["input_files"]["pdb_dark"])
-    check_highres_limit(unscaled_dark, unscaled_triggered, general_config)
-    map_dark_comp = gemmi_structure_to_calculated_map(
-        struc,
-        high_resolution_limit=general_config["high_resolution_limit"],
-        map_sampling=general_config["map_sampling"],
-    )
-
-    map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
-    map_triggered = scale_maps(
-        reference_map=map_dark_comp, map_to_scale=unscaled_triggered
-    )
-
-    diffmap_temp = combined_diffmap_calc(
-        map_dark,
-        map_triggered,
-        map_dark_comp,
-        processing_config=config["map_processing"] | {"preprocessing": True},
-        general_config=config["general"],
-        allow_saving=False,
-    )
-    diffmap_temp_np = diffmap_temp.to_3d_numpy_map(
-        map_sampling=general_config["map_sampling"]
-    )
-    diffmap_larger = np.abs(diffmap_temp_np) > 1 * diffmap_temp_np.std()
-    logger.info(f"Diffmap std: {diffmap_temp_np.std():.3f}")
-    lgtxt = f"diffmap larger voxel count: {np.sum(diffmap_larger)/diffmap_larger.size}"
-    logger.info(lgtxt)
-    map_dark, zero_freq_dark = autoshift_rsmap_old(
-        map_dark, config["general"], map_dark_comp
-    )
-    logger.info("calculating autoshift for triggered map... with extra mask")
-    map_triggered, zero_freq_triggered = autoshift_rsmap_old(
-        map_triggered, config["general"], map_dark_comp, diffmap_larger
-    )
-    logger.info("calculating autoshift for triggered map... done")
-
-    if not config["map_processing"]["diffmap_v2_correction"]:
+    elif not diffmap_first:
+        map_dark, map_triggered, zero_freq_dark, zero_freq_triggered = shift_mean(
+            map_dark, map_triggered, config, map_dark_comp
+        )
         diffmap = combined_diffmap_calc(
             map_dark,
             map_triggered,
@@ -757,31 +702,8 @@ def prepare_maps_v2(
             allow_saving=True,
         )
     else:
-        if config["map_processing"]["dark_mean_correction"]:
-            diffmap = diffmap_temp  # type: ignore
-        else:
-            raise ValueError("Diffmap not defined")
-
-    if config["map_processing"]["diffmap_mean_correction"]:
-        if config["map_processing"]["dark_mean_correction"]:
-            zero_freq_diff = zero_freq_triggered - zero_freq_dark  # type: ignore
-            zero_uncertainty = np.sqrt(
-                (zero_freq_dark * 0.1) ** 2 + (zero_freq_triggered * 0.1) ** 2  # type: ignore
-            )
-        else:
-            raise ValueError(
-                "Diffmap Correction can only be done if dark correction is done"
-            )
-
-        diffmap.loc[(0, 0, 0)] = {
-            diffmap.amplitude_column_name: zero_freq_diff,
-            diffmap.phase_column_name: 0,
-            diffmap.uncertainties_column_name: zero_uncertainty,
-        }
-        logger.warning(f"Diffmap zero frequency: {zero_freq_diff}")
-
+        raise ValueError("Invalid configuration for diffmap calculation")
     return diffmap, map_dark, map_triggered
-
 
 def get_map_dark(config, old=False):
     ds_dark = rs.read_mtz(config["input_files"]["map_dark"])

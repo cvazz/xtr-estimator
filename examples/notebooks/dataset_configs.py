@@ -1,7 +1,7 @@
 import os
 import numpy as np
 
-from xtr_estimator.configuration import get_custom_config, get_file_config_diff_only
+from xtr_estimator.configuration import get_custom_config, get_config_diff
 from xtr_estimator.configuration import load_homepath
 from xtr_estimator.logger import setup_logger
 
@@ -66,3 +66,348 @@ def apply_config_myoglobin_general(idx: str | int) -> dict:
         config = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
     return config
 
+
+def apply_config_rsEGFP2() -> dict:
+    folderloc = "../data/"
+    dataloc_dark = folderloc + "scaled-test-data.mtz"
+    dataloc_light = folderloc + "scaled-test-data.mtz"
+    pdbloc_dark = folderloc + "8a6g.pdb"
+    name_machine = "rsEGFP2"
+    columns_dark = {
+        "amplitude_column": "F_off",
+        "phase_column": "PHIC_nochrom",
+        "uncertainty_column": "SIGF_off",
+    }
+    columns_triggered = {
+        "amplitude_column": "F_on",
+        "phase_column": "PHIC_chrom",
+        "uncertainty_column": "SIGF_on",
+    }
+    high_resolution_limit = 1.6
+
+    return get_custom_config(
+        dataloc_dark=dataloc_dark,
+        dataloc_light=dataloc_light,
+        pdbloc_dark=pdbloc_dark,
+        columns_dark=columns_dark,
+        columns_triggered=columns_triggered,
+        high_resolution_limit=high_resolution_limit,
+        name_machine=name_machine,
+    )
+
+
+def load_all_PL_paths(add_light=False) -> list[str]:
+    folderloc = "../data/photolyase/"
+    datalocs_light = []
+    folders = os.listdir(folderloc)
+    changing_bits = []
+    for ii, f in enumerate(folders):
+        if not os.path.isdir(os.path.join(folderloc, f)):
+            continue
+        if f[:2] == "1_":
+            continue
+        if not f[0].isdigit():
+            continue
+        f = os.listdir(folderloc)[ii]
+        final = f.split("_")[-1]
+        changing_bit = f + "/" + final
+        dataloc_light = folderloc + changing_bit + "_deposit.mtz"
+        datalocs_light.append(dataloc_light)
+        changing_bits.append(changing_bit)
+        print(ii, changing_bit, f)
+    return changing_bits
+    # dataloc_light = datalocs_light[idx]  # Just use the first
+
+
+def apply_config_PL_general(name_ending: str | int, add_light=False) -> dict:
+    homepath = load_homepath()
+    folderloc = homepath + "data/photolyase/"
+    dataloc_dark = folderloc + "1_superdark/superdark_deposit.mtz"
+    pdbloc_dark = folderloc + "1_superdark/superdark_deposit.pdb"
+    folders = os.listdir(folderloc)
+    folders = [f for f in folders if f[:2] != "1_"]
+    out = None
+    for ii, f in enumerate(folders):
+        if isinstance(name_ending, str):
+            if f[-len(name_ending) :] == name_ending:
+                out = f
+        elif isinstance(name_ending, int):
+            if ii == name_ending:
+                out = f
+        else:
+            raise ValueError(
+                f"name_ending should be str or int, not {type(name_ending)}"
+            )
+    if out is None:
+        print(folders)
+        raise ValueError(f"No folder starting with {name_ending} found in {folderloc}")
+    final = out.split("_")[-1]
+    changing_bit = out + "/" + final
+    dataloc_light = folderloc + changing_bit + "_deposit.mtz"
+    high_resolution_limit = 2.6
+
+    name_machine = f"PL_{final}"
+    name_human = f"Photolyase {final}"
+    columns_dark = dict(
+        amplitude_column="F-obs-filtered",
+        uncertainty_column="SIGF-obs-filtered",
+        phase_column="PHIF-model",
+    )
+    columns_triggered = dict(
+        amplitude_column="F", uncertainty_column="SIGF", phase_column="PHIF-model"
+    )
+    config = get_custom_config(
+        dataloc_dark=dataloc_dark,
+        dataloc_light=dataloc_light,
+        pdbloc_dark=pdbloc_dark,
+        columns_dark=columns_dark,
+        columns_triggered=columns_triggered,
+        high_resolution_limit=high_resolution_limit,
+        name_machine=name_machine,
+        name_human=name_human,
+    )
+    if add_light:
+        config["input_files"]["pdbloc_triggered"] = (
+            config["input_files"]["map_triggered"][:-4] + ".pdb"
+        )
+    # config["masking"]["dar"]
+    return config
+
+
+#################################################################################
+#################################################################################
+#################################################################################
+
+
+def get_folders_B12(print_it=False):
+    homepath = load_homepath()
+    folderloc = homepath + "data/b12_sacla/"
+    diffmap_locs = os.listdir(folderloc)
+    diffmap_locs = [f for f in diffmap_locs if "qFoFo" in f]
+    diffmap_locs = np.sort(diffmap_locs)
+    if print_it:
+        for idx, f in enumerate(diffmap_locs):
+            print(idx, f)
+    return diffmap_locs
+
+
+def get_folders_B12_diff_with_pdb():
+    return {
+        "100us_30mJ.cm-2_SACLA_qFoFo.mtz": "9S0B",
+        "10ns_12mJ.cm-2_SACLA_qFoFo.mtz": "9S0C",
+        "10ns_30mJ.cm-2_SACLA_qFoFo.mtz": "9S08",
+        "300ns_30mJ.cm-2_SACLA_qFoFo.mtz": "9S09",
+        "3ms_30mJ.cm-2_SACLA_qFoFo.mtz": "9S0B",
+        "3us_120mJ.cm-2_SACLA_qFoFo.mtz": None,
+        "3us_12mJ.cm-2_SACLA_qFoFo.mtz": "9S0D",
+        "3us_30mJ.cm-2_SACLA_qFoFo.mtz": "9S0E",
+        "3us_60mJ.cm-2_SACLA_qFoFo.mtz": None,
+    }
+
+
+def get_folders_B12_light_with_pdb():
+    return {
+        "100us_30mJ.cm-2_light_FPFree.mtz": "9S0B",
+        "10ns_12mJ.cm-2_light_FPFree.mtz": "9S0C",
+        "10ns_30mJ.cm-2_light_FPFree.mtz": "9S08",
+        "300ns_30mJ.cm-2_light_FPFree.mtz": "9S09",
+        "3ms_30mJ.cm-2_light_FPFree.mtz": "9S0B",
+        "3us_120mJ.cm-2_light_FPFree.mtz": None,
+        "3us_12mJ.cm-2_light_FPFree.mtz": "9S0D",
+        "3us_30mJ.cm-2_light_FPFree.mtz": "9S0E",
+        "3us_60mJ.cm-2_light_FPFree.mtz": None,
+    }
+
+
+def apply_config_B12_general_light(idx: int) -> dict:
+    homepath = "../"
+    folderloc = homepath + "data/b12_sacla/"
+    dataloc_dark = folderloc + "dark_ref_FPFREE.mtz"
+    pdbloc_dark = folderloc + "9S06.pdb"
+
+    lightmap_locs = os.listdir(folderloc)
+    lightmap_locs = [f for f in lightmap_locs if "light_FPFree" in f]
+    lightmap_locs = np.sort(lightmap_locs)
+    lightmap_locs = np.delete(lightmap_locs, [1])
+    lightmap_name = str(lightmap_locs[idx])
+    logger.info(f"Selected lightmap: {lightmap_name}")
+
+    b12_xtr_pdb = get_folders_B12_light_with_pdb()[lightmap_name]
+    if b12_xtr_pdb is not None:
+        pdbloc_light = folderloc + b12_xtr_pdb + ".pdb"
+        logger.info(f"Selected light PDB: {pdbloc_light}")
+
+    else:
+        logger.info(f"No PDB found for {lightmap_name}, proceeding without light PDB.")
+        pdbloc_light = None
+    logger.info("Proceeding with configuration...")
+    lightmap_loc = folderloc + lightmap_name
+    high_resolution_limit = 2.2
+
+    final = lightmap_name.split("mJ")[0]
+    name_machine = f"B12_{final}"
+    name_human = f"B12 {final}"
+    columns_dark = dict(
+        amplitude_column="F", phase_column="MODEL", uncertainty_column="SIGF"
+    )
+    columns_light = dict(
+        amplitude_column="F", phase_column="MODEL", uncertainty_column="SIGF"
+    )
+    config = get_custom_config(
+        dataloc_dark=dataloc_dark,
+        dataloc_light=lightmap_loc,
+        pdbloc_dark=pdbloc_dark,
+        columns_dark=columns_dark,
+        columns_triggered=columns_light,
+        pdbloc_triggered=pdbloc_light,
+        high_resolution_limit=high_resolution_limit,
+        name_machine=name_machine,
+        name_human=name_human,
+    )
+    return config
+
+
+def apply_config_B12_general(idx: int) -> dict:
+    homepath = load_homepath()
+    folderloc = homepath + "data/b12_sacla/"
+    dataloc_dark = folderloc + "9S06_dark.mtz"
+    pdbloc_dark = folderloc + "9S06.pdb"
+
+    diffmap_locs = os.listdir(folderloc)
+    diffmap_locs = [f for f in diffmap_locs if "qFoFo" in f]
+    diffmap_locs = np.sort(diffmap_locs)
+    diffmap_locs = np.delete(diffmap_locs, [1])
+    diffmap_name = str(diffmap_locs[idx])
+    logger.info(f"Selected diffmap: {diffmap_name}")
+
+    b12_xtr_pdb = get_folders_B12_diff_with_pdb()[diffmap_name]
+    if b12_xtr_pdb is not None:
+        pdbloc_light = folderloc + b12_xtr_pdb + ".pdb"
+        logger.info(f"Selected light PDB: {pdbloc_light}")
+
+    else:
+        logger.info(f"No PDB found for {diffmap_name}, proceeding without light PDB.")
+        pdbloc_light = None
+    logger.info("Proceeding with configuration...")
+    diffmap_loc = folderloc + diffmap_name
+    high_resolution_limit = 2.3
+
+    final = diffmap_name.split("mJ")[0]
+    name_machine = f"B12_{final}"
+    name_human = f"B12 {final}"
+    columns_dark = dict(
+        amplitude_column="FP", phase_column="PHIF-model", uncertainty_column="SIGFP"
+    )
+    columns_diff = dict(
+        amplitude_column="QFOFOWT", uncertainty_column="SIGF", phase_column="PHIQFOFOWT"
+    )
+    config = get_config_diff(
+        dataloc_dark=dataloc_dark,
+        dataloc_diff=diffmap_loc,
+        pdbloc_dark=pdbloc_dark,
+        columns_dark=columns_dark,
+        columns_diff=columns_diff,
+        pdbloc_light=pdbloc_light,
+        high_resolution_limit=high_resolution_limit,
+        name_machine=name_machine,
+        name_human=name_human,
+    )
+    return config
+
+
+def apply_config_PL_general_diff(name_ending: str | int, add_light=False) -> dict:
+    homepath = load_homepath()
+    folderloc = homepath + "data/photolyase/"
+    dataloc_dark = folderloc + "1_superdark/superdark_deposit.mtz"
+    pdbloc_dark = folderloc + "1_superdark/superdark_deposit.pdb"
+    folders = os.listdir(folderloc)
+    folders = [f for f in folders if f[:2] != "1_"]
+    out = None
+    for ii, f in enumerate(folders):
+        if isinstance(name_ending, str):
+            if f[-len(name_ending) :] == name_ending:
+                out = f
+        elif isinstance(name_ending, int):
+            if ii == name_ending:
+                out = f
+        else:
+            raise ValueError(
+                f"name_ending should be str or int, not {type(name_ending)}"
+            )
+    if out is None:
+        print(folders)
+        raise ValueError(f"No folder starting with {name_ending} found in {folderloc}")
+    final = out.split("_")[-1]
+    changing_bit = out + "/" + final
+    diffmap_loc = folderloc + changing_bit + "-dark_kwt_ded.mtz"
+    high_resolution_limit = 2.6
+
+    name_machine = f"PL_{final}"
+    name_human = f"Photolyase {final}"
+    columns_dark = dict(
+        amplitude_column="F-obs-filtered",
+        uncertainty_column="SIGF-obs-filtered",
+        phase_column="PHIF-model",
+    )
+    columns_diff = dict(
+        amplitude_column="KFOFOWT", uncertainty_column="SIGF", phase_column="PHIKFOFOWT"
+    )
+    config = get_config_diff(
+        dataloc_dark=dataloc_dark,
+        dataloc_diff=diffmap_loc,
+        pdbloc_dark=pdbloc_dark,
+        columns_dark=columns_dark,
+        columns_diff=columns_diff,
+        high_resolution_limit=high_resolution_limit,
+        name_machine=name_machine,
+        name_human=name_human,
+    )
+    return config
+
+
+#################################################################################
+#################################################################################
+#################################################################################
+
+
+def get_some_configs() -> list[dict]:
+    configs = []
+    configs.append(apply_config_PL_general("3ns"))
+    configs.append(apply_config_rsEGFP2())
+    # configs.append(apply_config_PL_3ns())
+    # configs.append(apply_config_PL_30ns())
+    # configs.append(apply_config_PL_3ps())
+    return configs
+
+
+def get_all_configs() -> list[dict]:
+    configs = []
+    configs.append(apply_config_rsEGFP2())
+    configs.append(apply_config_PL_general("3ns"))
+    configs.append(apply_config_PL_general("30ns"))
+    configs.append(apply_config_PL_general("10ns"))
+    configs.append(apply_config_PL_general("3ps"))
+    return configs
+
+
+def get_all_PL_configs(get_diff=False) -> list[dict]:
+    bits = load_all_PL_paths()
+    configs = []
+    import numpy as np
+
+    numbers = [bit.split("_")[0] for bit in bits]
+    numbers = [int(n) for n in numbers]
+    arg_idx = np.argsort(np.array(numbers, int))
+    bits = np.array(bits)[arg_idx]
+    for bit in bits:
+        if get_diff:
+            config = apply_config_PL_general_diff(bit.split("/")[-1], add_light=False)
+        else:
+            config = apply_config_PL_general(bit.split("/")[-1])
+        configs.append(config)
+    return configs
+
+
+if __name__ == "__main__":
+    print(get_folders_B12_diff_with_pdb())
+    print(get_folders_B12())

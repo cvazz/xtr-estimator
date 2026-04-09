@@ -1,6 +1,0 @@
-matplotlib
-meteor-maps
-# reciprocalspaceship
-scipy
-scikit-image
-jupyter

@@ -69,25 +69,23 @@ cfg = get_config(
     data_yaml="examples/rsEGFP2/local_config.yaml",
     overrides=["masking.sigma=4"]
 )
+cfg.masking.sigma=3 
+cfg["masking"]["sigma"]=6
 
 # Run the estimation pipeline
 execute_main(cfg)
-```
+from xtr_estimator.main import get_config, execute_main
 
----
+# Load a local config and override specific values
+cfg = get_config(
+    data_yaml="./examples/data/rsEGFP2/local_config.yaml",
+    overrides=["masking.sigma=4"]
+)
+cfg.masking.sigma=3 
+cfg["masking"]["sigma"]=6
 
-## 📁 Directory Structure
-```text
-.
-├── conf/                # Hydra configuration defaults
-├── examples/            # Example datasets (rsEGFP2, Photolyase)
-│   ├── data/            # MTZ and PDB files
-│   └── scripts/         # Sample scripts for diff/triggered modes
-├── xtr_estimator/       # Core package source code
-│   ├── main.py          # CLI Entry point and config orchestrator
-│   ├── estimation.py    # Math and plotting for extrapolation
-│   └── processing.py    # Map handling and scaling
-└── pyproject.toml       # Package metadata and dependencies
+# Run the estimation pipeline
+execute_main(cfg)
 ```
 
 ---
