@@ -1,6 +1,6 @@
 from xtr_estimator.logger import setup_logger
 from xtr_estimator.main import execute_main
-from xtr_estimator.configuration import get_base_config, get_config, get_config_triggered, get_config_diff
+from xtr_estimator.configuration import  get_config, get_config_triggered, get_config_diff
 
 
 

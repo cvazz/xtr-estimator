@@ -15,7 +15,7 @@ logger = setup_logger()
 
 
 
-def execute_main(config: DictConfig | dict, save2file: bool = False) -> None:
+def execute_main(config: DictConfig | dict, save2file: bool = False, show: bool = True) -> None:
     """The actual processing logic."""
     # Ensure we have regular dict
     if isinstance(config, DictConfig):
@@ -36,11 +36,12 @@ def execute_main(config: DictConfig | dict, save2file: bool = False) -> None:
     fig, axs, _ = plot_extrapolation_estimate(diffmap, map_dark, inclusion_mask, config)
     filename = os.path.join(config["general"]["output_folder"], 
                            f"{config["general"]["name_machine"]}_extrapolation_estimate.png")
-    if save2file:
+    if config["plot"]["save_to_file"]:
         fig.savefig(filename)
-        plt.close(fig)
-    else:
+    if config["plot"]["show_plot"]:
         plt.show()
+    else:
+        plt.close(fig)
 
 
 

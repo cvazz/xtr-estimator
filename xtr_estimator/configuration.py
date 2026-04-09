@@ -4,6 +4,14 @@ from omegaconf import OmegaConf, DictConfig
 from xtr_estimator.logger import setup_logger
 logger = setup_logger()
 
+def merge_overrides(cfg, overrides):
+    if isinstance(overrides, list):
+        print("Overriding")
+        overrides_cfg = OmegaConf.from_dotlist(overrides)
+    else:
+        overrides_cfg = OmegaConf.create(overrides)
+    cfg = OmegaConf.merge(cfg, overrides_cfg)
+    return cfg
 
 def load_homepath():
     # This function returns the path in which t
@@ -243,12 +251,9 @@ def get_config(data_yaml=None, overrides=None):
         cfg = OmegaConf.merge(cfg, local_cfg)
 
     # 3. Merge Overrides (CLI list or Dictionary)
+    print("Overrides before merge:", overrides)
     if overrides:
-        if isinstance(overrides, list):
-            overrides_cfg = OmegaConf.from_dotlist(overrides)
-        else:
-            overrides_cfg = OmegaConf.create(overrides)
-        cfg = OmegaConf.merge(cfg, overrides_cfg)
+        cfg = merge_overrides(cfg, overrides)
 
     if data_yaml:
         check_paths(cfg, data_yaml)

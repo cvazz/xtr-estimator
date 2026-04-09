@@ -24,6 +24,8 @@ plot:
   std_cutoff: 3.0
   solvent_density: 0.4
   minimum_datapoints: 10
+  show_plot: true
+  save_to_file: true
 
 general:
   name_machine: "unnamed_experiment"

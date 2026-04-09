@@ -29,3 +29,11 @@ dependencies = [
 # This tells setuptools that the "xtr_estimator" package is 
 # located in the current directory (.)
 packages = ["xtr_estimator"]
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "nbmake",
+]
