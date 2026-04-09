@@ -1,7 +1,6 @@
 general:
   name_machine: "rsEGFP2"
   name_human: "rsEGFP2"
-  output_base_folder: "."
   output_folder: "./tmp/"
   high_resolution_limit: 1.6
 

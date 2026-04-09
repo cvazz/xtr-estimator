@@ -13,8 +13,8 @@ masking:
 map_processing:
   diffmap_type: "tv"
   dark_mean_correction: true
-  diffmap_mean_correction: true
-  diffmap_v2_correction: false
+  simple_dark_correction: true
+  calculate_diffmap_before_f000: false
   preprocessing: false
 
 plot:
@@ -27,19 +27,19 @@ plot:
 
 general:
   name_machine: "unnamed_experiment"
-  name_human: ${oc.select:general.name_human,${general.name_machine}}
-  output_base_folder: "tmp"
-  output_folder: "${general.output_base_folder}/${general.name_machine}/"
+  name_human: ${general.name_machine}
+  output_folder: "$./tmp/${general.name_machine}/"
   map_sampling: 3
   high_resolution_limit: 0.1
   pdbloc_dark: "${input_files.pdb_dark}"
   comparison_type: "triggered"
+  # data_type: "${comparison_type}"
 
 input_files:
   data_folder: null
   map_dark: ???       # '???' means this value is MANDATORY and must be provided
-  map_triggered: none       # '???' means this value is MANDATORY and must be provided
-  map_diff: none       # '???' means this value is MANDATORY and must be provided
+  map_triggered: null       
+  map_diff: null       
   pdb_dark: ???
   pdb_triggered: null
   columns_dark: 

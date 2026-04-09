@@ -1,10 +1,9 @@
 general:
   name_machine: "PL_30ns"
   name_human: "Photolyase 30 ns"
-  output_base_folder: "."
   output_folder: "./tmp/"
   high_resolution_limit: 2.6
-  data_type: "triggered"
+  comparison_type: "triggered"
 
 input_files:
   data_folder: "../data/photolyase"

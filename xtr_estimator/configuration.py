@@ -1,6 +1,8 @@
 import os
 from hydra import initialize, compose
 from omegaconf import OmegaConf, DictConfig
+from xtr_estimator.logger import setup_logger
+logger = setup_logger()
 
 
 def load_homepath():
@@ -29,36 +31,20 @@ def minimal_masking_config():
 
 
 def get_base_config():
-    return {
-        "masking": {
-            "sigma": 3,
-            "min_blob_size": 3,  # in A^3
-            "blocking_radius": 1.5,
-            "blocking_percentile": 95,
-            "exclude_solvent": True,
-            "dark_size_threshold": 0.1,
-            "exclude_positive_diffmap": True,
-            "exclude_large_occupancy_outliers": False,
-        },
-        "map_processing": {
-            "diffmap_type": "tv",  # "kweighted", "tv", or "vanilla"
-            "dark_mean_correction": True,
-            "diffmap_mean_correction": True,
-            "diffmap_v2_correction": False,
-            "preprocessing": False,
-        },
-        "plot": {
-            "show_ignored_voxels": True,
-            "set_ylim": False,
-            "is_composite": False,
-            "std_cutoff": 3.0,
-            "solvent_density": 0.4,
-            "minimum_datapoints": 10,
-        },
-    }
+    # load the base config from YAML and return as a dictionary
+    path = os.path.join(os.path.dirname(__file__), "../conf/config.yaml")
+    with open(path, "r") as f:
+        base_cfg = OmegaConf.load(f)
+        # create dictionary containing only the "masking", "map_processing", and "plot" sections
+        keys = ["masking", "map_processing", "plot"]
+        base_dict = {key: base_cfg[key] for key in keys}
+        for key in keys:
+             if isinstance(base_dict[key], DictConfig):
+                base_dict[key] = OmegaConf.to_container(base_dict[key], resolve=True, throw_on_missing=True)
+    return base_dict
 
 
-def get_file_config(
+def get_config_triggered(
     dataloc_dark: str,
     dataloc_light: str,
     pdbloc_dark: str,
@@ -74,12 +60,12 @@ def get_file_config(
         "general": {
             "name_human": name_human if name_human else name_machine,
             "name_machine": name_machine,
-            "output_base_folder": (
+            "output_folder": (
                 outpath if outpath else load_homepath() + "tmp/diffmap_data/"
             ),
             "map_sampling": 3,
             "high_resolution_limit": high_resolution_limit,
-            "data_type": "triggered",  # "triggered" or "diffmap"
+            "comparison_type": "triggered",
         },
         "input_files": {
             "map_dark": dataloc_dark,
@@ -93,8 +79,7 @@ def get_file_config(
         },
     } | get_base_config()
 
-    output_folder = config["general"]["output_base_folder"] + "/"
-    config["general"]["output_folder"] = output_folder
+    config["general"]["output_folder"] = f"./tmp/{config['general']['name_machine']}/"
     config["general"]["pdbloc_dark"] = pdbloc_dark
     return config
 
@@ -144,7 +129,7 @@ def get_custom_config(
 
     # Add optional outpath logic
     if outpath:
-        overrides["general"]["output_base_folder"] = outpath
+        overrides["general"]["output_folder"] = outpath
 
     # 3. Merge the dictionary into the Hydra config
     # This replaces values in 'cfg' with values from 'overrides'
@@ -157,7 +142,7 @@ def get_custom_config(
     return cfg
 
 
-def get_file_config_diff_only(
+def get_config_diff(
     dataloc_dark: str,
     dataloc_diff: str,
     pdbloc_dark: str,
@@ -173,12 +158,13 @@ def get_file_config_diff_only(
         "general": {
             "name_human": name_human if name_human else name_machine,
             "name_machine": name_machine,
-            "output_base_folder": (
-                outpath if outpath else load_homepath() + "tmp/diffmap_data/"
+            "output_folder": (
+                outpath if outpath else "./tmp/diffmap_data/"
             ),
             "map_sampling": 3,
             "high_resolution_limit": high_resolution_limit,
-            "data_type": "diff",  # "triggered" or "diffmap"
+            # "data_type": "diff",  # "triggered" or "diffmap"
+            "comparison_type": "diff",
         },
         "input_files": {
             "map_dark": dataloc_dark,
@@ -189,4 +175,83 @@ def get_file_config_diff_only(
             "columns_diff": columns_diff,
         },
     } | get_base_config()
+
+    config["general"]["output_folder"] = f"./tmp/{config['general']['name_machine']}/"
+    config["general"]["pdbloc_dark"] = pdbloc_dark
+
     return config
+
+def check_paths(cfg: DictConfig, data_path: str) -> DictConfig:
+    data_dir = os.path.dirname(os.path.abspath(data_path))
+
+    # List of keys that contain file paths to resolve
+    path_keys = ["map_dark", "map_triggered", "pdb_dark", "pdb_triggered"]
+
+    for key in path_keys:
+        # Access the value (e.g., cfg.input_files.map_dark)
+        val = cfg.input_files.get(key)
+
+        # If the value exists and is NOT an absolute path
+        if val and not os.path.isabs(val):
+            # Construct path relative to the directory of the YAML file
+            potential_path = os.path.join(data_dir, val)
+
+            # Update config if that file actually exists there
+            if os.path.exists(potential_path):
+                cfg.input_files[key] = os.path.abspath(potential_path)
+                logger.info(f"Resolved relative path for {key}: {cfg.input_files[key]}")
+
+
+
+def get_config(data_yaml=None, overrides=None):
+
+    """
+    The 'Heavy Lifting' config loader.
+    - data_yaml: path to a local conf.yaml
+    - overrides: list of dot-notation strings (e.g. ["general.sigma=5"])
+                 or a dictionary.
+    """
+
+    local_cfg = (
+        OmegaConf.load(data_yaml) if data_yaml and os.path.exists(data_yaml) else None
+    )
+    if local_cfg:
+        if local_cfg.input_files.get("map_diff", None) is not None:
+            print("hi?")
+            mode = "diff"
+        elif local_cfg.input_files.get("map_triggered", None) is not None:
+            print("hi:(?")
+            mode = "triggered"
+        else:
+            raise ValueError(
+                "Could not determine mode from local config. Please ensure either 'map_diff' or 'map_triggered' is specified."
+            )
+    else:
+        mode = "triggered"  # default mode if no local config provided
+        logger.info("No local config found")
+
+
+    with initialize(version_base=None, config_path="../conf"):
+        # Load the base + the mode-specific schema
+        cfg = compose(
+            config_name="config", overrides=[f"general.comparison_type={mode}"]
+        )
+
+    # 2. Merge Local YAML if provided
+
+    if local_cfg:
+        cfg = OmegaConf.merge(cfg, local_cfg)
+
+    # 3. Merge Overrides (CLI list or Dictionary)
+    if overrides:
+        if isinstance(overrides, list):
+            overrides_cfg = OmegaConf.from_dotlist(overrides)
+        else:
+            overrides_cfg = OmegaConf.create(overrides)
+        cfg = OmegaConf.merge(cfg, overrides_cfg)
+
+    if data_yaml:
+        check_paths(cfg, data_yaml)
+    # 4. Final Polish
+    OmegaConf.resolve(cfg)
+    return cfg

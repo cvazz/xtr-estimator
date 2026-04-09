@@ -3,64 +3,19 @@ import os
 import sys
 
 from omegaconf import DictConfig, OmegaConf
-from hydra import initialize, compose
 
+from .configuration import get_config
 from .masking import make_inclusion_mask
 from .processing import get_maps, get_maps_diff, prepare_maps
-from .estimation import plot_extrapolation_estimate_new
+from .estimation import plot_extrapolation_estimate
 from .logger import setup_logger
 
 logger = setup_logger()
 
 
-def get_config(data_yaml=None, overrides=None):
-    """
-    The 'Heavy Lifting' config loader.
-    - data_yaml: path to a local conf.yaml
-    - overrides: list of dot-notation strings (e.g. ["general.sigma=5"])
-                 or a dictionary.
-    """
-
-    local_cfg = (
-        OmegaConf.load(data_yaml) if data_yaml and os.path.exists(data_yaml) else None
-    )
-    if local_cfg.input_files.get("map_diff", None) is not None:
-        mode = "diff"
-    elif local_cfg.input_files.get("map_triggered", None) is not None:
-        mode = "triggered"
-    else:
-        raise ValueError(
-            "Could not determine mode from local config. Please ensure either 'map_diff' or 'map_triggered' is specified."
-        )
-
-    with initialize(version_base=None, config_path="../conf"):
-        # Load the base + the mode-specific schema
-        cfg = compose(
-            config_name="config", overrides=[f"general.comparison_type={mode}"]
-        )
-        print(cfg.general)
-
-    # 2. Merge Local YAML if provided
-
-    if local_cfg:
-        cfg = OmegaConf.merge(cfg, local_cfg)
-
-    # 3. Merge Overrides (CLI list or Dictionary)
-    if overrides:
-        if isinstance(overrides, list):
-            overrides_cfg = OmegaConf.from_dotlist(overrides)
-        else:
-            overrides_cfg = OmegaConf.create(overrides)
-        cfg = OmegaConf.merge(cfg, overrides_cfg)
-
-    if data_yaml:
-        check_paths(cfg, data_yaml)
-    # 4. Final Polish
-    OmegaConf.resolve(cfg)
-    return cfg
 
 
-def execute_main(config: DictConfig | dict) -> None:
+def execute_main(config: DictConfig | dict, save2file: bool = False) -> None:
     """The actual processing logic."""
     # Ensure we have regular dict
     if isinstance(config, DictConfig):
@@ -78,29 +33,15 @@ def execute_main(config: DictConfig | dict) -> None:
             f"Unknown comparison type: {config['general']['comparison_type']}"
         )
     inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
-    _ = plot_extrapolation_estimate_new(diffmap, map_dark, inclusion_mask, config)
-    plt.show()
+    fig, axs, _ = plot_extrapolation_estimate(diffmap, map_dark, inclusion_mask, config)
+    filename = os.path.join(config["general"]["output_folder"], 
+                           f"{config["general"]["name_machine"]}_extrapolation_estimate.png")
+    if save2file:
+        fig.savefig(filename)
+        plt.close(fig)
+    else:
+        plt.show()
 
-
-def check_paths(cfg: DictConfig, data_path: str) -> DictConfig:
-    data_dir = os.path.dirname(os.path.abspath(data_path))
-
-    # List of keys that contain file paths to resolve
-    path_keys = ["map_dark", "map_triggered", "pdb_dark", "pdb_triggered"]
-
-    for key in path_keys:
-        # Access the value (e.g., cfg.input_files.map_dark)
-        val = cfg.input_files.get(key)
-
-        # If the value exists and is NOT an absolute path
-        if val and not os.path.isabs(val):
-            # Construct path relative to the directory of the YAML file
-            potential_path = os.path.join(data_dir, val)
-
-            # Update config if that file actually exists there
-            if os.path.exists(potential_path):
-                cfg.input_files[key] = os.path.abspath(potential_path)
-                logger.info(f"Resolved relative path for {key}: {cfg.input_files[key]}")
 
 
 def main():

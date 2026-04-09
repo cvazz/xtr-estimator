@@ -1,9 +1,9 @@
 general:
-  name_machine: "PL_30ns"
+  name_machine: "PL_30ns_x8"
   name_human: "Photolyase 30 ns"
-  output_base_folder: "."
   output_folder: "./tmp/"
   high_resolution_limit: 2.6
+  comparison_type: "diff"
 
 input_files:
   data_folder: "../data/photolyase"
