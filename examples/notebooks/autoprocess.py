@@ -1,9 +1,12 @@
+import argparse
 from functools import partial
 from multiprocessing import Pool
 import os
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+# import hydra 
+# from omegaconf import DictConfig
 import reciprocalspaceship as rs
 
 from xtr_estimator.estimation import plot_extrapolation_estimate
@@ -173,15 +176,65 @@ def comprehensive_xtr_analysis(config):
     print(results)
     # comb_ref(occ_val=occ_val)
 
+def int_or_str(value):
+    try:
+        return int(value)
+    except ValueError:
+        return str(value)
+def parsing():
+    parser = argparse.ArgumentParser(description="Autoprocess X-ray crystallography data.")
 
+    # 2. Define the expected arguments
+    parser.add_argument(
+        "--type", 
+        type=str, 
+        required=True, 
+        choices=["b12", "pl"], # Automatically enforces valid inputs
+        help="Type of configuration to apply ('b12' or 'pl')."
+    )
+    
+    parser.add_argument(
+        "--specifier", 
+        type=int_or_str, 
+        default = 1, 
+        help="Specifier ID for the dataset."
+    )
+    
+    parser.add_argument(
+        "--dmin", 
+        type=float, 
+        default=None, 
+        help="High resolution limit (optional)."
+    )
+    
+    parser.add_argument(
+        "--diffmap_type", 
+        type=str, 
+        default=None, 
+        help="Type of difference map (e.g., 'tv') (optional)."
+    )
+
+    # 3. Parse the arguments from the command line
+    return parser.parse_args()
 def main():
-    if True:
-        config = apply_config_B12_general_light(3)
-        config.general.high_resolution_limit = 2.3
+    args = parsing()
+    if args.type == "b12":
+        print(args.specifier)
+        print(type(args.specifier))
+        config = apply_config_B12_general_light(args.specifier)
+    elif args.type == "pl":
+        config = apply_config_PL_general(args.specifier, add_light=True)
     else:
-        config = apply_config_PL_general("30ns", add_light=True)
-    comprehensive_xtr_analysis(config)
+        raise ValueError(f"Unknown config type: {args.type}")    
 
+    print(args.dmin)
+    if args.dmin:
+        config.general.high_resolution_limit = args.dmin 
+    if args.diffmap_type:
+        config.general.diffmap_type = args.diffmap_type
+
+
+    comprehensive_xtr_analysis(config)
 
 if __name__ == "__main__":
     main()

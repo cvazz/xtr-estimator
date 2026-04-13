@@ -132,6 +132,11 @@ def get_custom_config(
     columns_are_ints = columns_dark.get("ints_column", None) is not None
     col_name_dark = "columns_dark_ints" if columns_are_ints else"columns_dark"
     col_name_triggered = "columns_triggered_ints" if columns_are_ints else "columns_triggered"
+    make_path_explicit = lambda path: os.path.abspath(path) if path else None
+    dataloc_dark = make_path_explicit(dataloc_dark)
+    dataloc_light = make_path_explicit(dataloc_light)
+    pdbloc_dark = make_path_explicit(pdbloc_dark)
+    pdbloc_triggered = make_path_explicit(pdbloc_triggered) 
     overrides = {
         "general": {
             "name_machine": name_machine,
