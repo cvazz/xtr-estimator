@@ -26,10 +26,11 @@ from xtr_estimator.xtr_maps import save_to_folder
 logger = setup_logger()
 
 
-def make_folder_name(config, diffmap_type=""):
+def make_folder_name(config):
     if config["input_files"]["pdb_triggered"] is None:
         raise ValueError("Triggered PDB must be provided in config for auto processing")
     general_config = config["general"]
+    diffmap_type = config["map_processing"]["diffmap_type"]
     folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr/"
     os.makedirs(folder, exist_ok=True)
     parameters = dict()
@@ -230,7 +231,8 @@ def main():
         raise ValueError(f"Unknown config type: {args.type}")    
 
     if args.dmin:
-        config.general.high_resolution_limit = args.dmin 
+        print(config.general.high_resolution_limit)
+        config.general.high_resolution_limit = np.round(args.dmin, 1)
     if args.diffmap_type:
         config.map_processing.diffmap_type = args.diffmap_type
 
