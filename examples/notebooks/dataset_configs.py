@@ -222,7 +222,7 @@ def get_folders_B12_light_with_pdb():
 def apply_config_B12_general_light(idx: int) -> dict:
     homepath = "../"
     folderloc = homepath + "data/b12_sacla/"
-    dataloc_dark = folderloc + "dark_ref_FPFREE.mtz"
+    dataloc_dark = folderloc + "dark_ref_FPFree.mtz"
     pdbloc_dark = folderloc + "9S06.pdb"
 
     lightmap_locs = os.listdir(folderloc)

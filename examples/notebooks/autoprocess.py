@@ -231,7 +231,7 @@ def main():
     if args.dmin:
         config.general.high_resolution_limit = args.dmin 
     if args.diffmap_type:
-        config.general.diffmap_type = args.diffmap_type
+        config.map_processing.diffmap_type = args.diffmap_type
 
 
     comprehensive_xtr_analysis(config)
