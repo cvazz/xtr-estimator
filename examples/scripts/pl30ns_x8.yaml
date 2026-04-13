@@ -18,3 +18,6 @@ input_files:
     amplitude_column: "KFOFOWT"
     phase_column: "PHIKFOFOWT"
     uncertainty_column: "SIGF"
+
+map_processing:
+  diffmap_type: "vanilla" # "kweighted" or "tv" or "vanilla"

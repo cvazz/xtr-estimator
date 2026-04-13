@@ -1,3 +1,4 @@
+import hydra
 import matplotlib.pyplot as plt
 import os
 import sys
@@ -22,9 +23,6 @@ def execute_main(config: DictConfig | dict, save2file: bool = False, show: bool 
         config = OmegaConf.to_container(config, resolve=True)
     if config["general"]["comparison_type"] == "diff":
         map_dark, diffmap = get_maps_diff(config)
-        diffmap_np = diffmap.to_3d_numpy_map(map_sampling=3)
-        map_dark_np = map_dark.to_3d_numpy_map(map_sampling=3)
-        print(diffmap_np.shape, map_dark_np.shape)
     elif config["general"]["comparison_type"] == "triggered":
         unscaled_dark, unscaled_triggered = get_maps(config)
         diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
@@ -33,7 +31,7 @@ def execute_main(config: DictConfig | dict, save2file: bool = False, show: bool 
             f"Unknown comparison type: {config['general']['comparison_type']}"
         )
     inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
-    fig, axs, _ = plot_extrapolation_estimate(diffmap, map_dark, inclusion_mask, config)
+    fig, ax, prediction_tuple = plot_extrapolation_estimate(diffmap, map_dark, inclusion_mask, config)
     filename = os.path.join(config["general"]["output_folder"], 
                            f"{config["general"]["name_machine"]}_extrapolation_estimate.png")
     if config["plot"]["save_to_file"]:
@@ -42,9 +40,10 @@ def execute_main(config: DictConfig | dict, save2file: bool = False, show: bool 
         plt.show()
     else:
         plt.close(fig)
+    return prediction_tuple
 
 
-
+@hydra.main(version_base=None, config_path="config", config_name="default")
 def main():
     """Entry point for command line: 'python -m xtr_estimator.monster'"""
     # Grab the first arg as the data yaml, the rest as dot-notation overrides

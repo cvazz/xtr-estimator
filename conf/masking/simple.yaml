@@ -1,0 +1,9 @@
+
+sigma: 3 
+min_blob_size: 0.1 
+blocking_radius: 0.1 
+blocking_percentile: 0.1 
+exclude_solvent: true 
+dark_size_threshold: 0.1
+exclude_positive_diffmap: true
+exclude_large_occupancy_outliers: false

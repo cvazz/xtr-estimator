@@ -324,10 +324,7 @@ def autoshift_rsmap_old(
         map_in.phase_column_name: 0,
         map_in.uncertainties_column_name: zero_freq / 10,
     }
-    # map_in.infer_mtz_dtypes(inplace=True)
-    # map_in.sort_index()
     map_in.write_mtz("autoshifted_map.mtz")
-    # remove autoshifted_map.mtz after checking it, or move to a temp folder, or add option to save it
     os.remove("autoshifted_map.mtz")
     return map_in, zero_freq
 
@@ -613,11 +610,13 @@ def shift_mean(
     map_dark_comp: rsmap.Map,
 ) -> tuple[rsmap.Map, rsmap.Map, float, float]:
     if config["map_processing"]["simple_dark_correction"]:
+        processing_config = copy.deepcopy(config["map_processing"])
+        processing_config["preprocessing"] = True
         diffmap_temp = combined_diffmap_calc(
             map_dark,
             map_triggered,
             map_dark_comp,
-            processing_config=config["map_processing"] | {"preprocessing": True},
+            processing_config=processing_config,
             general_config=config["general"],
             allow_saving=False,
         )

@@ -38,19 +38,33 @@ def minimal_masking_config():
     }
 
 
-def get_base_config():
-    # load the base config from YAML and return as a dictionary
-    path = os.path.join(os.path.dirname(__file__), "../conf/config.yaml")
-    with open(path, "r") as f:
-        base_cfg = OmegaConf.load(f)
-        # create dictionary containing only the "masking", "map_processing", and "plot" sections
-        keys = ["masking", "map_processing", "plot"]
-        base_dict = {key: base_cfg[key] for key in keys}
-        for key in keys:
-             if isinstance(base_dict[key], DictConfig):
-                base_dict[key] = OmegaConf.to_container(base_dict[key], resolve=True, throw_on_missing=True)
-    return base_dict
+# def get_base_config():
+#     # load the base config from YAML and return as a dictionary
+#     path = os.path.join(os.path.dirname(__file__), "../conf/config.yaml")
+#     with open(path, "r") as f:
+#         base_cfg = OmegaConf.load(f)
+#         # create dictionary containing only the "masking", "map_processing", and "plot" sections
+#         keys = ["masking", "map_processing", "plot"]
+#         base_dict = {key: base_cfg[key] for key in keys}
+#         for key in keys:
+#              if isinstance(base_dict[key], DictConfig):
+#                 base_dict[key] = OmegaConf.to_container(base_dict[key], resolve=True, throw_on_missing=True)
+#     return base_dict
 
+def get_base_config(overrides=[]):
+    # 'config_path' is relative to this python file
+    # 'version_base' handles compatibility
+    with initialize(version_base=None, config_path="../conf"):
+        # This is where Hydra does the magic: 
+        # It reads config.yaml, sees the 'defaults', and merges simple.yaml
+        cfg = compose(config_name="config", overrides=overrides)
+        print(cfg)
+        
+        # Now extract your keys just like before
+        keys = ["masking", "map_processing", "plot"]
+        
+        # OmegaConf.to_container handles the conversion to a standard dict
+        return {key: OmegaConf.to_container(cfg[key], resolve=True) for key in keys}
 
 def get_config_triggered(
     dataloc_dark: str,

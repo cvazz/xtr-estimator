@@ -1,14 +1,17 @@
 # conf/config.yaml
+defaults:
+  - _self_
+  - /masking: advanced
 
 masking:
-  sigma: 3
-  min_blob_size: 3
-  blocking_radius: 1.5
-  blocking_percentile: 95
-  exclude_solvent: true
-  dark_size_threshold: 0.1
-  exclude_positive_diffmap: true
-  exclude_large_occupancy_outliers: false
+  sigma: none
+  min_blob_size: none 
+  blocking_radius: none 
+  blocking_percentile: none 
+  exclude_solvent: none 
+  dark_size_threshold: none
+  exclude_positive_diffmap: none
+  # exclude_large_occupancy_outliers: none
 
 map_processing:
   diffmap_type: "tv"
@@ -45,22 +48,22 @@ input_files:
   pdb_dark: ???
   pdb_triggered: null
   columns_dark: 
-    amplitude_column: null
-    phase_column: null
-    uncertainty_column: null
+    amplitude_column: "F"
+    phase_column: "PHI"
+    uncertainty_column: "SIGF"
   columns_dark_ints:
-    ints_column: null
-    int_uncertainty_column: null
+    ints_column: "I"
+    int_uncertainty_column: "SIGI"
   columns_triggered:
-    amplitude_column: null
-    phase_column: null
-    uncertainty_column: null
+    amplitude_column: "F"
+    phase_column: "PHI"
+    uncertainty_column: "SIGF"
   columns_triggered_ints:
-    ints_column: null
-    int_uncertainty_column: null
+    ints_column: "I"
+    int_uncertainty_column: "SIGI"
   columns_diff:
-    amplitude_column: null
-    phase_column: null
-    uncertainty_column: null
+    amplitude_column: "FKOFOWT"
+    phase_column: "PHIFKOFOWT"
+    uncertainty_column: "SIGF"
   impose_dark_phases: true
   columns_are_ints: false
