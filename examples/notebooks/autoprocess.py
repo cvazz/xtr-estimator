@@ -30,7 +30,7 @@ def make_folder_name(config, diffmap_type=""):
     if config["input_files"]["pdb_triggered"] is None:
         raise ValueError("Triggered PDB must be provided in config for auto processing")
     general_config = config["general"]
-    folder = f"./tmp/{general_config['name_machine']}_xtr/"
+    folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr/"
     os.makedirs(folder, exist_ok=True)
     parameters = dict()
     parameters["folder"] = folder
@@ -107,6 +107,7 @@ def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base)
             stats = extract_simple_stats(log_file)
             if stats.get("r_work", None) is None and stats.get("r_free", None) is None:
                 raise ValueError(f"Stats do not contain r_work or r_free: {stats}")
+            stats["occ_val"] = occ_val
 
             print(f"Already processed run: {run_id_comb}, stats: {stats}")
             return stats
@@ -121,6 +122,7 @@ def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base)
     stats, _, _ = run_single_refinement(
         output_pdb, parameters["triggered_map"], run_id_comb, parameters["folder"]
     )
+    stats["occ_val"] = occ_val
     return stats
 
 
@@ -171,9 +173,11 @@ def comprehensive_xtr_analysis(config):
     )
     occ_values = np.arange(0.1, 0.9, 0.05)
     with Pool() as pool:
-        results = pool.map(comb_ref_xtr, occ_values)
-        results = pool.map(comb_ref_model, occ_values)
-    print(results)
+        results_xtr = pool.map(comb_ref_xtr, occ_values)
+        results_model = pool.map(comb_ref_model, occ_values)
+    print("\nxtr\n", results_xtr, "\nreference\n", results_model)
+
+
     # comb_ref(occ_val=occ_val)
 
 def int_or_str(value):
@@ -219,15 +223,12 @@ def parsing():
 def main():
     args = parsing()
     if args.type == "b12":
-        print(args.specifier)
-        print(type(args.specifier))
         config = apply_config_B12_general_light(args.specifier)
     elif args.type == "pl":
         config = apply_config_PL_general(args.specifier, add_light=True)
     else:
         raise ValueError(f"Unknown config type: {args.type}")    
 
-    print(args.dmin)
     if args.dmin:
         config.general.high_resolution_limit = args.dmin 
     if args.diffmap_type:

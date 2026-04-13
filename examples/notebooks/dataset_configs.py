@@ -208,14 +208,14 @@ def get_folders_B12_diff_with_pdb():
 def get_folders_B12_light_with_pdb():
     return {
         "100us_30mJ.cm-2_light_FPFree.mtz": "9S0B",
-        "10ns_12mJ.cm-2_light_FPFree.mtz": "9S0C",
-        "10ns_30mJ.cm-2_light_FPFree.mtz": "9S08",
+            "10ns_12mJ.cm-2_light_FPFree.mtz": "9S0C",
+            "10ns_30mJ.cm-2_light_FPFree.mtz": "9S08",
         "300ns_30mJ.cm-2_light_FPFree.mtz": "9S09",
-        "3ms_30mJ.cm-2_light_FPFree.mtz": "9S0B",
-        "3us_120mJ.cm-2_light_FPFree.mtz": None,
-        "3us_12mJ.cm-2_light_FPFree.mtz": "9S0D",
-        "3us_30mJ.cm-2_light_FPFree.mtz": "9S0E",
-        "3us_60mJ.cm-2_light_FPFree.mtz": None,
+            "3ms_30mJ.cm-2_light_FPFree.mtz": "9S0B",
+            "3us_120mJ.cm-2_light_FPFree.mtz": None,
+            "3us_12mJ.cm-2_light_FPFree.mtz": "9S0D",
+            "3us_30mJ.cm-2_light_FPFree.mtz": "9S0E",
+            "3us_60mJ.cm-2_light_FPFree.mtz": None,
     }
 
 
@@ -228,7 +228,7 @@ def apply_config_B12_general_light(idx: int) -> dict:
     lightmap_locs = os.listdir(folderloc)
     lightmap_locs = [f for f in lightmap_locs if "light_FPFree" in f]
     lightmap_locs = np.sort(lightmap_locs)
-    lightmap_locs = np.delete(lightmap_locs, [1])
+    # lightmap_locs = np.delete(lightmap_locs, [1])
     lightmap_name = str(lightmap_locs[idx])
     logger.info(f"Selected lightmap: {lightmap_name}")
 
@@ -409,5 +409,7 @@ def get_all_PL_configs(get_diff=False) -> list[dict]:
 
 
 if __name__ == "__main__":
-    print(get_folders_B12_diff_with_pdb())
-    print(get_folders_B12())
+    # print(get_folders_B12_diff_with_pdb())
+    # print(get_folders_B12())
+    # print(apply_config_B12_general_light(0))
+    pass
