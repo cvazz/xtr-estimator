@@ -48,9 +48,6 @@ def make_folder_name(config, diffmap_type=""):
     return parameters
 
 
-
-
-
 def extrapolation(config, parameters):
     unscaled_dark, unscaled_triggered = get_maps(config)
     diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
@@ -60,7 +57,7 @@ def extrapolation(config, parameters):
     )
     filename = os.path.join(
         config["general"]["output_folder"],
-        f"{config["general"]["name_machine"]}_extrapolation_estimate.png",
+        f'{config["general"]["name_machine"]}_extrapolation_estimate.png',
     )
     # if config["plot"]["save_to_file"]:
     fig.savefig(filename)
@@ -68,7 +65,7 @@ def extrapolation(config, parameters):
     dataloc_dark = config["input_files"]["map_dark"]
     ds_dark = rs.read_mtz(dataloc_dark)
     rfree_column = find_rfree_column(ds_dark)
-    rfree = ds_dark[rfree_column] 
+    rfree = ds_dark[rfree_column]
     filelocs = save_to_folder(
         diffmap,
         map_dark,
@@ -122,6 +119,8 @@ def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base)
         output_pdb, parameters["triggered_map"], run_id_comb, parameters["folder"]
     )
     return stats
+
+
 def comprehensive_xtr_analysis(config):
     parameters = make_folder_name(config)
     base_out = Path(parameters["folder"]).resolve()
@@ -137,8 +136,8 @@ def comprehensive_xtr_analysis(config):
             if not Path(triggered_model).exists():
                 print(f"Minimizing triggered model and saving to {triggered_model}...")
                 cmd = ["phenix.minimize_geometry", parameters["triggered_model"]]
-                log_name = "minimize_geometry+"+triggered_model[:-4] + ".log"
-                run_command(cmd,  log_name, parameters["folder"])
+                log_name = "minimize_geometry+" + triggered_model[:-4] + ".log"
+                run_command(cmd, log_name, parameters["folder"])
             parameters["triggered_model"] = triggered_model
 
         stats, mtz_name, pdb_name = run_single_refinement(
@@ -173,8 +172,10 @@ def comprehensive_xtr_analysis(config):
         results = pool.map(comb_ref_model, occ_values)
     print(results)
     # comb_ref(occ_val=occ_val)
+
+
 def main():
-    if False:
+    if True:
         config = apply_config_B12_general_light(3)
         config.general.high_resolution_limit = 2.3
     else:
