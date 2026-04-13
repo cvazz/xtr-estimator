@@ -2,11 +2,11 @@ import numpy as np
 from meteor import rsmap
 import pandas as pd
 import reciprocalspaceship as rs
-from logger import setup_logger
 from reciprocalspaceship.dtypes import StandardDeviationDtype  # Q
 from pathlib import Path
 import shutil
 
+from .logger import setup_logger
 logger = setup_logger()
 
 
@@ -99,8 +99,15 @@ def save_extrapolated_map(
         )
         # ds_temp.drop(mask, inplace=True) # drop rows where only one of F or SIGF is NaN
         ds_temp.loc[mask, xtr_map.columns] = np.nan
+    try:
+        rfree_column = find_rfree_column(ds_temp)
+        logger.info(f"Identified R-free column: {rfree_column}")
+    except ValueError as e:
+        logger.error(f"Error identifying R-free column: {e}")
+        rfree_column = "Rfree_flag"
+        
     if rfree_flags is not None:
-        ds_temp["Rfree"] = rfree_flags
+        ds_temp[rfree_column] = rfree_flags
 
     ds_temp.write_mtz(file_loc)
     return file_loc
@@ -212,3 +219,39 @@ def save_to_folder(
         )
         filelocs.append(file_loc)
     return filelocs
+
+def find_rfree_column(ds: rs.DataSet) -> str:
+    """
+    Identifies a potential R-free/Test column from a reciprocalspaceship DataSet.
+    
+    Returns:
+        str: The name of the identified R-free column.
+    Raises:
+        ValueError: If no suitable column is found.
+    """
+    # 1. Identify all columns that are MTZIntDtype
+    # This captures columns marked as 'I' (integers) in the MTZ header
+    int_cols = [col for col in ds.columns if isinstance(ds.dtypes[col], rs.MTZIntDtype)]
+    
+    # 2. Filter those for "r" and "free" (case-insensitive)
+    potential_cols = [
+        col for col in int_cols 
+        if "r" in col.lower() and "free" in col.lower()
+    ]
+    
+    # 3. Handle logic branches
+    if not potential_cols:
+        raise ValueError(
+            "Could not find a suitable R-free column. "
+            "Ensure a column exists with 'R' and 'Free' in the name and is type MTZInt."
+        )
+    
+    if len(potential_cols) > 1:
+        selected = potential_cols[0]
+        logger.warning(
+            f"Multiple potential R-free columns found: {potential_cols}. "
+            f"Arbitrarily selecting: {selected}"
+        )
+        return selected
+
+    return potential_cols[0]

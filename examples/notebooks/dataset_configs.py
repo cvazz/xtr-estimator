@@ -121,7 +121,7 @@ def load_all_PL_paths(add_light=False) -> list[str]:
 
 def apply_config_PL_general(name_ending: str | int, add_light=False) -> dict:
     homepath = load_homepath()
-    folderloc = homepath + "data/photolyase/"
+    folderloc = homepath + "examples/data/photolyase/"
     dataloc_dark = folderloc + "1_superdark/superdark_deposit.mtz"
     pdbloc_dark = folderloc + "1_superdark/superdark_deposit.pdb"
     folders = os.listdir(folderloc)
@@ -167,7 +167,7 @@ def apply_config_PL_general(name_ending: str | int, add_light=False) -> dict:
         name_human=name_human,
     )
     if add_light:
-        config["input_files"]["pdbloc_triggered"] = (
+        config["input_files"]["pdb_triggered"] = (
             config["input_files"]["map_triggered"][:-4] + ".pdb"
         )
     # config["masking"]["dar"]
