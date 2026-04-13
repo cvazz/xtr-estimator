@@ -232,7 +232,7 @@ def main():
 
     if args.dmin:
         print(config.general.high_resolution_limit)
-        config.general.high_resolution_limit = np.round(args.dmin, 1)
+        config.general.high_resolution_limit = args.dmin
     if args.diffmap_type:
         config.map_processing.diffmap_type = args.diffmap_type
 

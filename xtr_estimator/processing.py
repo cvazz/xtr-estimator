@@ -113,7 +113,8 @@ def check_highres_limit(
 ):
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
-    high_res_limit = np.round(max(dmin_dark, dmin_triggered), 1)
+    high_res_limit = float(np.round(max(dmin_dark, dmin_triggered), 1))
+    print((type(high_res_limit), high_res_limit, type(general_config["high_resolution_limit"]), general_config["high_resolution_limit"]))
 
     if not np.isclose(dmin_dark, dmin_triggered):
         logger.warning(
