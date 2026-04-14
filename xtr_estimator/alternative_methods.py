@@ -17,11 +17,11 @@ from meteor import rsmap
 from meteor.sfcalc import gemmi_structure_to_calculated_map
 from meteor.utils import cut_resolution
 
-from configuration import load_homepath, minimal_masking_config
-from configuration import get_file_config_diff_only
-from logger import setup_logger
-from masking import make_inclusion_mask
-from estimation import plot_extrapolation_estimate_new
+from .configuration import load_homepath, minimal_masking_config
+from .configuration import get_config_diff
+from .masking import make_inclusion_mask
+from .estimation import plot_extrapolation_estimate
+from .logger import setup_logger
 
 logger = setup_logger()
 
@@ -459,7 +459,7 @@ def prepare_data(folder_path, reference_pdb, dmin):
         "phase_column": "PHIC",
         "uncertainty_column": "SIGF",
     }
-    config = get_file_config_diff_only(
+    config = get_config_diff(
         reference_mtz,
         difference_mtz,
         reference_pdb,
@@ -547,7 +547,7 @@ def make_figure_vary_inside(input_data):
         advanced_nse = np.nan
 
     # --------------------------- Cell (1,1): Plot 4 ---------------------------
-    _, _, (vacuum_mean, vacuum_std) = plot_extrapolation_estimate_new(
+    _, _, (vacuum_mean, vacuum_std) = plot_extrapolation_estimate(
         diffmap, map_dark, inclusion_mask_nse, config, compact=True
     )
     return {
@@ -710,7 +710,7 @@ def make_single_figure(input_data):
 
     # --------------------------- Cell (1,1): Plot 4 ---------------------------
     ax3 = fig.add_subplot(outer_grid[1, 1])
-    plot_extrapolation_estimate_new(diffmap, map_dark, inclusion_mask_nse, config, ax3)
+    plot_extrapolation_estimate(diffmap, map_dark, inclusion_mask_nse, config, ax3)
     ax3.set_title("Vacuum Matching")
     # ax3.set_xlim(0,1)
     # ax3.set_ylim(0,0.81)
