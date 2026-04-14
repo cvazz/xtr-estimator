@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
-# import hydra 
+
+# import hydra
 # from omegaconf import DictConfig
 import reciprocalspaceship as rs
 
@@ -49,6 +50,7 @@ def make_folder_name(config):
     )
     output_pdb = parameters["folder"] + "combined_weighted.pdb"
     parameters["combined_model"] = output_pdb
+    parameters["number_iterations_refinement"] = 6
     return parameters
 
 
@@ -63,9 +65,7 @@ def extrapolation(config, parameters):
     folders = [config["general"]["output_folder"], parameters["folder"]]
     for folder in folders:
         print(f"Saving extrapolation estimate plot to {filename}...")
-        filename = os.path.join(
-           folder, img_name 
-        )
+        filename = os.path.join(folder, img_name)
         fig.savefig(filename)
     # if config["plot"]["save_to_file"]:
 
@@ -124,7 +124,11 @@ def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base)
     )
     new_st.write_pdb(output_pdb)
     stats, _, _ = run_single_refinement(
-        output_pdb, parameters["triggered_map"], run_id_comb, parameters["folder"]
+        output_pdb,
+        parameters["triggered_map"],
+        run_id_comb,
+        parameters["folder"],
+        number_iterations=parameters["number_iterations_refinement"],
     )
     stats["occ_val"] = occ_val
     return stats
@@ -154,6 +158,7 @@ def comprehensive_xtr_analysis(config):
             datafile,
             run_id_comb,
             parameters["folder"],
+            number_iterations=parameters["number_iterations_refinement"],
         )
         parameters["xtr_model"] = pdb_name
     else:
@@ -181,6 +186,7 @@ def comprehensive_xtr_analysis(config):
         results_model = pool.map(comb_ref_model, occ_values)
     evaluate_models(results_xtr, results_model, parameters)
 
+
 def evaluate_models(results_xtr, results_model, parameters):
     print(parameters)
     # in parameters folder look for all files that contain paramteres["xtr_prefix"] and print
@@ -189,7 +195,7 @@ def evaluate_models(results_xtr, results_model, parameters):
         print(f"File in output folder: {file}")
         # cut file between last xtr and .mtz and print
         # if file.suffix == ".mtz":
-        real_occu = 1/float(file.stem.split('xtr')[-1])
+        real_occu = 1 / float(file.stem.split("xtr")[-1])
         print(f"MTZ file: {file}, real_occu: {real_occu}")
         occus.append(real_occu)
 
@@ -200,58 +206,76 @@ def evaluate_models(results_xtr, results_model, parameters):
     r_work_model = np.array([res["r_work"] for res in results_model], dtype=float)
     r_free_model = np.array([res["r_free"] for res in results_model], dtype=float)
     fig = plt.figure(figsize=(10, 5))
-    if len(occus)==1:
-        plt.axvline(x=occus[0], color="green", linestyle="--", label="Best Vacuum Estimate")
+    if len(occus) == 1:
+        plt.axvline(
+            x=occus[0], color="green", linestyle="--", label="Best Vacuum Estimate"
+        )
     plt.plot(occ_vals_xtr, r_work_xtr, label="XTR R-work", marker="o", color="blue")
-    plt.plot(occ_vals_model, r_work_model, label="Model R-work", marker="s", color="red")
+    plt.plot(
+        occ_vals_model, r_work_model, label="Model R-work", marker="s", color="red"
+    )
     plt.plot(occ_vals_xtr, r_free_xtr, label="XTR R-free", marker="o", color="cyan")
-    plt.plot(occ_vals_model, r_free_model, label="Model R-free", marker="s", color="magenta")
+    plt.plot(
+        occ_vals_model, r_free_model, label="Model R-free", marker="s", color="magenta"
+    )
     # plt.axvline(x=parameters["best_vacuum"], color="green", linestyle="--", label="Best Vacuum Estimate")
     plt.legend()
-    fig.savefig(os.path.join(parameters["folder"], f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png"))
+    fig.savefig(
+        os.path.join(
+            parameters["folder"],
+            f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png",
+        )
+    )
 
     # comb_ref(occ_val=occ_val)
+
 
 def int_or_str(value):
     try:
         return int(value)
     except ValueError:
         return str(value)
+
+
 def parsing():
-    parser = argparse.ArgumentParser(description="Autoprocess X-ray crystallography data.")
+    parser = argparse.ArgumentParser(
+        description="Autoprocess X-ray crystallography data."
+    )
 
     # 2. Define the expected arguments
     parser.add_argument(
-        "--type", 
-        type=str, 
-        required=True, 
-        choices=["b12", "pl"], # Automatically enforces valid inputs
-        help="Type of configuration to apply ('b12' or 'pl')."
+        "--type",
+        type=str,
+        required=True,
+        choices=["b12", "pl"],  # Automatically enforces valid inputs
+        help="Type of configuration to apply ('b12' or 'pl').",
     )
-    
+
     parser.add_argument(
-        "--specifier", 
-        type=int_or_str, 
-        default = 1, 
-        help="Specifier ID for the dataset."
+        "--specifier",
+        type=int_or_str,
+        default=1,
+        help="Specifier ID for the dataset.",
     )
-    
+
     parser.add_argument(
-        "--dmin", 
-        type=float, 
-        default=None, 
-        help="High resolution limit (optional)."
+        "--dmin",
+        type=float,
+        default=None,
+        help="High resolution limit (optional).",
     )
-    
+
     parser.add_argument(
-        "--diffmap_type", 
-        type=str, 
-        default=None, 
-        help="Type of difference map (e.g., 'tv') (optional)."
+        "--diffmap_type",
+        type=str,
+        default=None,
+        help="Type of difference map (e.g., 'tv') (optional).",
     )
 
     # 3. Parse the arguments from the command line
     return parser.parse_args()
+
+
 def main():
     args = parsing()
     if args.type == "b12":
@@ -259,7 +283,7 @@ def main():
     elif args.type == "pl":
         config = apply_config_PL_general(args.specifier, add_light=True)
     else:
-        raise ValueError(f"Unknown config type: {args.type}")    
+        raise ValueError(f"Unknown config type: {args.type}")
 
     if args.dmin:
         print(config.general.high_resolution_limit)
@@ -267,8 +291,8 @@ def main():
     if args.diffmap_type:
         config.map_processing.diffmap_type = args.diffmap_type
 
-
     comprehensive_xtr_analysis(config)
+
 
 if __name__ == "__main__":
     main()
