@@ -59,12 +59,15 @@ def extrapolation(config, parameters):
     fig, ax, prediction_tuple = plot_extrapolation_estimate(
         diffmap, map_dark, inclusion_mask, config
     )
-    filename = os.path.join(
-        config["general"]["output_folder"],
-        f'{config["general"]["name_machine"]}_extrapolation_estimate.png',
-    )
+    img_name = f'{config["general"]["name_machine"]}_{config["map_processing"]["diffmap_type"]}_extrapolation_estimate.png'
+    folders = [config["general"]["output_folder"], parameters["folder"]]
+    for folder in folders:
+        print(f"Saving extrapolation estimate plot to {filename}...")
+        filename = os.path.join(
+           folder, img_name 
+        )
+        fig.savefig(filename)
     # if config["plot"]["save_to_file"]:
-    fig.savefig(filename)
 
     dataloc_dark = config["input_files"]["map_dark"]
     ds_dark = rs.read_mtz(dataloc_dark)
@@ -176,8 +179,36 @@ def comprehensive_xtr_analysis(config):
     with Pool() as pool:
         results_xtr = pool.map(comb_ref_xtr, occ_values)
         results_model = pool.map(comb_ref_model, occ_values)
-    print("\nxtr\n", results_xtr, "\nreference\n", results_model)
+    evaluate_models(results_xtr, results_model, parameters)
 
+def evaluate_models(results_xtr, results_model, parameters):
+    print(parameters)
+    # in parameters folder look for all files that contain paramteres["xtr_prefix"] and print
+    occus = []
+    for file in Path(parameters["folder"]).glob(f"*{parameters['xtr_prefix']}*xtr*"):
+        print(f"File in output folder: {file}")
+        # cut file between last xtr and .mtz and print
+        # if file.suffix == ".mtz":
+        real_occu = 1/float(file.stem.split('xtr')[-1])
+        print(f"MTZ file: {file}, real_occu: {real_occu}")
+        occus.append(real_occu)
+
+    occ_vals_xtr = np.array([res["occ_val"] for res in results_xtr], dtype=float)
+    r_work_xtr = np.array([res["r_work"] for res in results_xtr], dtype=float)
+    r_free_xtr = np.array([res["r_free"] for res in results_xtr], dtype=float)
+    occ_vals_model = np.array([res["occ_val"] for res in results_model], dtype=float)
+    r_work_model = np.array([res["r_work"] for res in results_model], dtype=float)
+    r_free_model = np.array([res["r_free"] for res in results_model], dtype=float)
+    fig = plt.figure(figsize=(10, 5))
+    if len(occus)==1:
+        plt.axvline(x=occus[0], color="green", linestyle="--", label="Best Vacuum Estimate")
+    plt.plot(occ_vals_xtr, r_work_xtr, label="XTR R-work", marker="o", color="blue")
+    plt.plot(occ_vals_model, r_work_model, label="Model R-work", marker="s", color="red")
+    plt.plot(occ_vals_xtr, r_free_xtr, label="XTR R-free", marker="o", color="cyan")
+    plt.plot(occ_vals_model, r_free_model, label="Model R-free", marker="s", color="magenta")
+    # plt.axvline(x=parameters["best_vacuum"], color="green", linestyle="--", label="Best Vacuum Estimate")
+    plt.legend()
+    fig.savefig(os.path.join(parameters["folder"], f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png"))
 
     # comb_ref(occ_val=occ_val)
 
