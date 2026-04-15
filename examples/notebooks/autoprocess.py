@@ -336,20 +336,23 @@ def retrieve_occupancies_from_folder(parameters):
         print(f"File in output folder: {file}")
         # cut file between last xtr and .mtz and print
         # if file.suffix == ".mtz":
-        real_occu = 1 / float(file.stem.split("xtr")[-1])
+        try: 
+            real_occu =  float(file.stem.split("xtr")[-1])
+        except ValueError:
+            print(f"Could not convert {file} to float")
+            continue
         print(f"MTZ file: {file}, real_occu: {real_occu}")
         occus.append(real_occu)
-    return occus
+    return occus[0] if occus else np.nan
 
 
 def main_double(config):
     config["map_processing"]["diffmap_type"] = "tv"
     out_tv = comprehensive_xtr_analysis(config)
 
-    try:
-        expected_occu_tv = retrieve_occupancies_from_folder(out_tv[2])
-    except ValueError:
-        expected_occu_tv = np.nan
+    expected_occu_tv = retrieve_occupancies_from_folder(out_tv[2])
+
+
 
     config["map_processing"]["diffmap_type"] = "kweighted"
     out_k = comprehensive_xtr_analysis(config)
