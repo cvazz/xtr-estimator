@@ -325,8 +325,10 @@ def autoshift_rsmap_old(
         map_in.phase_column_name: 0,
         map_in.uncertainties_column_name: zero_freq / 10,
     }
-    map_in.write_mtz("autoshifted_map.mtz")
-    os.remove("autoshifted_map.mtz")
+    temp_name = "autoshifted_map.mtz"
+    map_in.write_mtz(temp_name)
+    if os.path.exists(temp_name):
+        os.remove(temp_name)
     return map_in, zero_freq
 
 

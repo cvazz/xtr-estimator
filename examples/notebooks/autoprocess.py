@@ -1,4 +1,5 @@
 import argparse
+from copy import deepcopy
 from functools import partial
 from multiprocessing import Pool
 import os
@@ -347,15 +348,17 @@ def retrieve_occupancies_from_folder(parameters):
 
 
 def main_double(config):
-    config["map_processing"]["diffmap_type"] = "tv"
+    config_tv = deepcopy(config)
+    config_tv["map_processing"]["diffmap_type"] = "tv"
     out_tv = comprehensive_xtr_analysis(config)
 
     expected_occu_tv = retrieve_occupancies_from_folder(out_tv[2])
 
 
 
-    config["map_processing"]["diffmap_type"] = "kweighted"
-    out_k = comprehensive_xtr_analysis(config)
+    config_k = deepcopy(config)
+    config_k["map_processing"]["diffmap_type"] = "kweighted"
+    out_k = comprehensive_xtr_analysis(config_k)
     expected_occu_k = retrieve_occupancies_from_folder(out_k[2])
 
     expected_occus = (expected_occu_tv, expected_occu_k)
