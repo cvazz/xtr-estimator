@@ -226,7 +226,7 @@ def evaluate_models(results_xtr, results_model, parameters):
             f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png",
         )
     )
-def evaluate_models(results_tv, results_k, results_model1, results_model2, parameters):
+def evaluate_models_double(results_tv, results_k, results_model1, results_model2, parameters):
     print(parameters)
     # in parameters folder look for all files that contain paramteres["xtr_prefix"] and print
     occus = []
@@ -259,7 +259,15 @@ def evaluate_models(results_tv, results_k, results_model1, results_model2, param
     plt.plot(
         occ_vals_model1, r_work_model1, label="Model1 R-work", marker="s", color="red"
     )
-    plt.plot(occ_vals_k, r_free_k, label="K-weighted R-free", marker="o", color="cyan")
+    plt.plot(occ_vals_tv, r_work_k, label="TV R-work", marker="o", color="green")
+    plt.plot(
+        occ_vals_model1, r_work_model2, label="Model1 R-work", marker="s", color="red"
+    )
+    plt.plot(occ_vals_k, r_free_tv, label="K-weighted R-free", marker="o", color="cyan")
+    plt.plot(
+        occ_vals_model2, r_free_model1, label="Model2 R-free", marker="s", color="magenta"
+    )
+    plt.plot(occ_vals_k, r_free_k, label="K-weighted R-free", marker="o", color="darkgreen")
     plt.plot(
         occ_vals_model2, r_free_model2, label="Model2 R-free", marker="s", color="magenta"
     )
@@ -268,7 +276,7 @@ def evaluate_models(results_tv, results_k, results_model1, results_model2, param
     fig.savefig(
         os.path.join(
             parameters["folder"],
-            f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png",
+            f"{parameters['xtr_prefix']}_rwork_rfree_comparison_double.png",
         )
     )
 
@@ -338,7 +346,7 @@ def main_double(config):
     out_tv = comprehensive_xtr_analysis(config)
     config["map_processing"]["diffmap_type"] = "kweighted"
     out_k = comprehensive_xtr_analysis(config)
-    evaluate_models(out_tv[0], out_k[0], out_tv[1], out_k[1], out_tv[2])
+    evaluate_models_double(out_tv[0], out_k[0], out_tv[1], out_k[1], out_tv[2])
 
 def main():
     args = parsing()
