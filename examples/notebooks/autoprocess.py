@@ -36,6 +36,8 @@ def make_folder_name(config):
     folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr/"
     os.makedirs(folder, exist_ok=True)
     parameters = dict()
+    parameters["name_machine"] = general_config["name_machine"]
+    parameters["name_human"] = general_config["name_human"]
     parameters["folder"] = folder
     parameters["xtr_prefix"] = general_config["name_machine"] + f"_{diffmap_type}"
     parameters["diffmap_prefix"] = (
@@ -193,13 +195,8 @@ def evaluate_models(results_xtr, results_model, parameters):
     print(parameters)
     # in parameters folder look for all files that contain paramteres["xtr_prefix"] and print
     occus = []
-    for file in Path(parameters["folder"]).glob(f"*{parameters['xtr_prefix']}*xtr*"):
-        print(f"File in output folder: {file}")
-        # cut file between last xtr and .mtz and print
-        # if file.suffix == ".mtz":
-        real_occu = 1 / float(file.stem.split("xtr")[-1])
-        print(f"MTZ file: {file}, real_occu: {real_occu}")
-        occus.append(real_occu)
+    expected_occu = retrieve_occupancies_from_folder(parameters)
+
 
     occ_vals_xtr = np.array([res["occ_val"] for res in results_xtr], dtype=float)
     r_work_xtr = np.array([res["r_work"] for res in results_xtr], dtype=float)
@@ -210,7 +207,7 @@ def evaluate_models(results_xtr, results_model, parameters):
     fig = plt.figure(figsize=(10, 5))
     if len(occus) == 1:
         plt.axvline(
-            x=occus[0], color="green", linestyle="--", label="Best Vacuum Estimate"
+            x=expected_occu, color="green", linestyle="--", label="Best Vacuum Estimate"
         )
     plt.plot(occ_vals_xtr, r_work_xtr, label="XTR R-work", marker="o", color="blue")
     plt.plot(
@@ -260,13 +257,13 @@ def evaluate_models_double(
     )
     model_plot_args_rfree = dict(label="Model R-free", marker="s", color="red")
     model_plot_args_work = dict(label="Model R-work", marker="s", color="magenta")
-    plt.plot(occ_vals_model1, r_work_model1, model_plot_args_work)
-    plt.plot(occ_vals_model1, r_free_model1, model_plot_args_rfree)
+    plt.plot(occ_vals_model1, r_work_model1, **model_plot_args_work)
+    plt.plot(occ_vals_model1, r_free_model1, **model_plot_args_rfree)
     plt.plot(occ_vals_model2, r_work_model2, marker="s", color="red")
     plt.plot(occ_vals_model2, r_free_model2, marker="s", color="magenta")
     # plt.axvline(x=parameters["best_vacuum"], color="green", linestyle="--", label="Best Vacuum Estimate")
     plt.title(
-        f"Comparison of TV and K-weighted Diffmap Types of {parameters['name_machine']}"
+        f"Comparison of TV and K-weighted Diffmap Types of {parameters['name_human']}"
     )
     plt.legend()
     fig.savefig(
@@ -353,9 +350,6 @@ def main_double(config):
     out_tv = comprehensive_xtr_analysis(config)
 
     expected_occu_tv = retrieve_occupancies_from_folder(out_tv[2])
-
-
-
     config_k = deepcopy(config)
     config_k["map_processing"]["diffmap_type"] = "kweighted"
     out_k = comprehensive_xtr_analysis(config_k)
@@ -363,7 +357,7 @@ def main_double(config):
 
     expected_occus = (expected_occu_tv, expected_occu_k)
     evaluate_models_double(
-        out_tv[0], out_k[0], out_tv[1], out_k[1], out_tv[2], expected_occus
+        results_tv=out_tv[0], results_k=out_k[0], results_model1=out_tv[1], results_model2=out_k[1], parameters=out_tv[2], expected_occus=expected_occus
     )
 
 
@@ -383,6 +377,7 @@ def main():
         config.map_processing.diffmap_type = args.diffmap_type
     elif args.diffmap_type in ["both"]:
         main_double(config)
+        return
     elif args.diffmap_type is not None:
         raise ValueError(f"Unknown diffmap type: {args.diffmap_type}")
     main_single(args, config)
