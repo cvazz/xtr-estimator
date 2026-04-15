@@ -64,8 +64,8 @@ def extrapolation(config, parameters):
     img_name = f'{config["general"]["name_machine"]}_{config["map_processing"]["diffmap_type"]}_extrapolation_estimate.png'
     folders = [config["general"]["output_folder"], parameters["folder"]]
     for folder in folders:
-        print(f"Saving extrapolation estimate plot to {filename}...")
         filename = os.path.join(folder, img_name)
+        print(f"Saving extrapolation estimate plot to {filename}...")
         fig.savefig(filename)
     # if config["plot"]["save_to_file"]:
 
