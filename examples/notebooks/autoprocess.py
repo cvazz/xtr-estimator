@@ -184,7 +184,7 @@ def comprehensive_xtr_analysis(config):
     with Pool() as pool:
         results_xtr = pool.map(comb_ref_xtr, occ_values)
         results_model = pool.map(comb_ref_model, occ_values)
-    evaluate_models(results_xtr, results_model, parameters)
+    return results_xtr, results_model, parameters
 
 
 def evaluate_models(results_xtr, results_model, parameters):
@@ -226,6 +226,52 @@ def evaluate_models(results_xtr, results_model, parameters):
             f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png",
         )
     )
+def evaluate_models(results_tv, results_k, results_model1, results_model2, parameters):
+    print(parameters)
+    # in parameters folder look for all files that contain paramteres["xtr_prefix"] and print
+    occus = []
+    for file in Path(parameters["folder"]).glob(f"*{parameters['xtr_prefix']}*xtr*"):
+        print(f"File in output folder: {file}")
+        # cut file between last xtr and .mtz and print
+        # if file.suffix == ".mtz":
+        real_occu = 1 / float(file.stem.split("xtr")[-1])
+        print(f"MTZ file: {file}, real_occu: {real_occu}")
+        occus.append(real_occu)
+
+    occ_vals_tv = np.array([res["occ_val"] for res in results_tv], dtype=float)
+    r_work_tv = np.array([res["r_work"] for res in results_tv], dtype=float)
+    r_free_tv = np.array([res["r_free"] for res in results_tv], dtype=float)
+    occ_vals_model1 = np.array([res["occ_val"] for res in results_model1], dtype=float)
+    r_work_model1 = np.array([res["r_work"] for res in results_model1], dtype=float)
+    r_free_model1 = np.array([res["r_free"] for res in results_model1], dtype=float)
+    occ_vals_k = np.array([res["occ_val"] for res in results_k], dtype=float)
+    r_work_k = np.array([res["r_work"] for res in results_k], dtype=float)
+    r_free_k = np.array([res["r_free"] for res in results_k], dtype=float)
+    occ_vals_model2 = np.array([res["occ_val"] for res in results_model2], dtype=float)
+    r_work_model2 = np.array([res["r_work"] for res in results_model2], dtype=float)
+    r_free_model2 = np.array([res["r_free"] for res in results_model2], dtype=float)
+    fig = plt.figure(figsize=(10, 5))
+    if len(occus) == 1:
+        plt.axvline(
+            x=occus[0], color="green", linestyle="--", label="Best Vacuum Estimate"
+        )
+    plt.plot(occ_vals_tv, r_work_tv, label="TV R-work", marker="o", color="blue")
+    plt.plot(
+        occ_vals_model1, r_work_model1, label="Model1 R-work", marker="s", color="red"
+    )
+    plt.plot(occ_vals_k, r_free_k, label="K-weighted R-free", marker="o", color="cyan")
+    plt.plot(
+        occ_vals_model2, r_free_model2, label="Model2 R-free", marker="s", color="magenta"
+    )
+    # plt.axvline(x=parameters["best_vacuum"], color="green", linestyle="--", label="Best Vacuum Estimate")
+    plt.legend()
+    fig.savefig(
+        os.path.join(
+            parameters["folder"],
+            f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png",
+        )
+    )
+
 
     # comb_ref(occ_val=occ_val)
 
@@ -276,6 +322,24 @@ def parsing():
     return parser.parse_args()
 
 
+def main_single(args, config):
+
+    if args.dmin:
+        print(config.general.high_resolution_limit)
+        config.general.high_resolution_limit = args.dmin
+    if args.diffmap_type:
+        config.map_processing.diffmap_type = args.diffmap_type
+
+    results_xtr, results_model, parameters = comprehensive_xtr_analysis(config)
+    evaluate_models(results_xtr, results_model, parameters)
+
+def main_double(config):
+    config["map_processing"]["diffmap_type"] = "tv"
+    out_tv = comprehensive_xtr_analysis(config)
+    config["map_processing"]["diffmap_type"] = "kweighted"
+    out_k = comprehensive_xtr_analysis(config)
+    evaluate_models(out_tv[0], out_k[0], out_tv[1], out_k[1], out_tv[2])
+
 def main():
     args = parsing()
     if args.type == "b12":
@@ -284,15 +348,9 @@ def main():
         config = apply_config_PL_general(args.specifier, add_light=True)
     else:
         raise ValueError(f"Unknown config type: {args.type}")
-
-    if args.dmin:
-        print(config.general.high_resolution_limit)
-        config.general.high_resolution_limit = args.dmin
-    if args.diffmap_type:
-        config.map_processing.diffmap_type = args.diffmap_type
-
-    comprehensive_xtr_analysis(config)
-
-
+    if args.double:
+        main_double(config)
+    else:
+        main_single(args, config)
 if __name__ == "__main__":
     main()
