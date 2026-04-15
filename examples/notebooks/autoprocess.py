@@ -332,11 +332,6 @@ def parsing():
 
 def main_single(args, config):
 
-    if args.dmin:
-        print(config.general.high_resolution_limit)
-        config.general.high_resolution_limit = args.dmin
-    if args.diffmap_type:
-        config.map_processing.diffmap_type = args.diffmap_type
 
     results_xtr, results_model, parameters = comprehensive_xtr_analysis(config)
     evaluate_models(results_xtr, results_model, parameters)
@@ -356,9 +351,16 @@ def main():
         config = apply_config_PL_general(args.specifier, add_light=True)
     else:
         raise ValueError(f"Unknown config type: {args.type}")
-    if args.double:
+
+    if args.dmin:
+        print(config.general.high_resolution_limit)
+        config.general.high_resolution_limit = args.dmin
+    if args.diffmap_type in ["tv", "kweighted"]:
+        config.map_processing.diffmap_type = args.diffmap_type
+    elif args.diffmap_type in ["both"]:
         main_double(config)
-    else:
-        main_single(args, config)
+    elif args.diffmap_type is not None:
+        raise ValueError(f"Unknown diffmap type: {args.diffmap_type}")
+    main_single(args, config)
 if __name__ == "__main__":
     main()
