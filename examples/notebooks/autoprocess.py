@@ -61,7 +61,7 @@ def extrapolation(config, parameters):
     fig, ax, prediction_tuple = plot_extrapolation_estimate(
         diffmap, map_dark, inclusion_mask, config
     )
-    img_name = f'{config["general"]["name_machine"]}_{config["map_processing"]["diffmap_type"]}_extrapolation_estimate.png'
+    img_name = f'{config["general"]["name_machine"]}_{config["map_processing"]["diffmap_type"]}_xtr{prediction_tuple[0]:.2f}.png'
     folders = [config["general"]["output_folder"], parameters["folder"]]
     for folder in folders:
         filename = os.path.join(folder, img_name)
@@ -139,6 +139,7 @@ def comprehensive_xtr_analysis(config):
     base_out = Path(parameters["folder"]).resolve()
     run_id_comb = "vacuum"
     pdb_name = base_out / f"{run_id_comb}_final.pdb"
+
     if not pdb_name.exists():
         print("pdb name does not exist, running extrapolation and refinement...")
         datafile, prediction_tuple = extrapolation(config, parameters)
@@ -344,7 +345,11 @@ def retrieve_occupancies_from_folder(parameters):
 def main_double(config):
     config["map_processing"]["diffmap_type"] = "tv"
     out_tv = comprehensive_xtr_analysis(config)
-    expected_occu_tv = retrieve_occupancies_from_folder(out_tv[2])
+
+    try:
+        expected_occu_tv = retrieve_occupancies_from_folder(out_tv[2])
+    except ValueError:
+        expected_occu_tv = np.nan
 
     config["map_processing"]["diffmap_type"] = "kweighted"
     out_k = comprehensive_xtr_analysis(config)
