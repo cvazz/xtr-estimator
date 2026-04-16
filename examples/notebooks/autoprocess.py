@@ -33,10 +33,15 @@ def make_folder_name(config):
         raise ValueError("Triggered PDB must be provided in config for auto processing")
     general_config = config["general"]
     diffmap_type = config["map_processing"]["diffmap_type"]
-    folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr/"
+    if config["prescribe_xtr"]:
+        folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr_{config['prescribe_xtr']}/"
+    else:
+        folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr/"
     os.makedirs(folder, exist_ok=True)
     parameters = dict()
-    parameters["name_machine"] = general_config["name_machine"]
+    parameters["name_machine"] = (
+        general_config["name_machine"] + f"_{diffmap_type}_{config['prescribe_xtr']}"
+    )
     parameters["name_human"] = general_config["name_human"]
     parameters["folder"] = folder
     parameters["xtr_prefix"] = general_config["name_machine"] + f"_{diffmap_type}"
@@ -71,9 +76,9 @@ def extrapolation(config, parameters):
             filename = os.path.join(folder, img_name)
             print(f"Saving extrapolation estimate plot to {filename}...")
             fig.savefig(filename)
-        xtr_prescribe = {"best_vacuum": 1 / prediction_tuple[0]},
+        xtr_prescribe = ({"best_vacuum": 1 / prediction_tuple[0]},)
     else:
-        xtr_prescribe = {"prescribe": 1/config["prescribe_xtr"]}
+        xtr_prescribe = {"prescribe": 1 / config["prescribe_xtr"]}
         prediction_tuple = (config["prescribe_xtr"], None, None)
 
     # if config["plot"]["save_to_file"]:
@@ -207,7 +212,6 @@ def evaluate_models(results_xtr, results_model, parameters):
     occus = []
     expected_occu = retrieve_occupancies_from_folder(parameters)
 
-
     occ_vals_xtr = np.array([res["occ_val"] for res in results_xtr], dtype=float)
     r_work_xtr = np.array([res["r_work"] for res in results_xtr], dtype=float)
     r_free_xtr = np.array([res["r_free"] for res in results_xtr], dtype=float)
@@ -238,7 +242,7 @@ def evaluate_models(results_xtr, results_model, parameters):
 
 
 def evaluate_models_double(
-    results_tv, results_k, results_model1, results_model2, parameters, expected_occus
+    results_tv, results_k, results_model1, results_model2, parameters, exp_occus
 ):
 
     occ_vals_tv = np.array([res["occ_val"] for res in results_tv], dtype=float)
@@ -255,12 +259,10 @@ def evaluate_models_double(
     r_free_model2 = np.array([res["r_free"] for res in results_model2], dtype=float)
 
     fig = plt.figure(figsize=(10, 5))
-    
+
+    plt.axvline(x=exp_occus[0], color="blue", linestyle="--", label="Best TV Estimate")
     plt.axvline(
-        x=expected_occus[0], color="blue", linestyle="--", label="Best TV Estimate"
-    )
-    plt.axvline(
-        x=expected_occus[1], color="green", linestyle="--", label="Best K-weighted Estimate"
+        x=exp_occus[1], color="green", linestyle="--", label="Best K-weighted Estimate"
     )
     plt.plot(occ_vals_tv, r_work_tv, label="TV R-work", marker="o", color="blue")
     plt.plot(occ_vals_tv, r_free_tv, label="TV R-free", marker="o", color="cyan")
@@ -339,7 +341,6 @@ def parsing():
         help="Skip automatic extrapolation and refinement, and directly prescribe an extrapolated occupancy for evaluation.",
     )
 
-
     # 3. Parse the arguments from the command line
     return parser.parse_args()
 
@@ -357,10 +358,10 @@ def retrieve_occupancies_from_folder(parameters):
         # cut file between last xtr and .mtz and print
         # if file.suffix == ".mtz":
 
-        if file.suffix != ".mtz":
+        if file.suffix != ".png":
             continue
-        try: 
-            real_occu =  float(file.stem.split("xtr")[-1])
+        try:
+            real_occu = float(file.stem.split("xtr")[-1])
         except ValueError:
             print(f"Could not convert {file} to float")
             continue
@@ -381,7 +382,12 @@ def main_double(config):
 
     expected_occus = (expected_occu_tv, expected_occu_k)
     evaluate_models_double(
-        results_tv=out_tv[0], results_k=out_k[0], results_model1=out_tv[1], results_model2=out_k[1], parameters=out_tv[2], expected_occus=expected_occus
+        results_tv=out_tv[0],
+        results_k=out_k[0],
+        results_model1=out_tv[1],
+        results_model2=out_k[1],
+        parameters=out_tv[2],
+        exp_occus=expected_occus,
     )
 
 
