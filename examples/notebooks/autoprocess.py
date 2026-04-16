@@ -60,16 +60,22 @@ def make_folder_name(config):
 def extrapolation(config, parameters):
     unscaled_dark, unscaled_triggered = get_maps(config)
     diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
-    inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
-    fig, ax, prediction_tuple = plot_extrapolation_estimate(
-        diffmap, map_dark, inclusion_mask, config
-    )
-    img_name = f'{config["general"]["name_machine"]}_{config["map_processing"]["diffmap_type"]}_xtr{prediction_tuple[0]:.2f}.png'
-    folders = [config["general"]["output_folder"], parameters["folder"]]
-    for folder in folders:
-        filename = os.path.join(folder, img_name)
-        print(f"Saving extrapolation estimate plot to {filename}...")
-        fig.savefig(filename)
+    if config.get("prescribe_xtr", None) is None:
+        inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
+        fig, ax, prediction_tuple = plot_extrapolation_estimate(
+            diffmap, map_dark, inclusion_mask, config
+        )
+        img_name = f'{config["general"]["name_machine"]}_{config["map_processing"]["diffmap_type"]}_xtr{prediction_tuple[0]:.2f}.png'
+        folders = [config["general"]["output_folder"], parameters["folder"]]
+        for folder in folders:
+            filename = os.path.join(folder, img_name)
+            print(f"Saving extrapolation estimate plot to {filename}...")
+            fig.savefig(filename)
+        xtr_prescribe = {"best_vacuum": 1 / prediction_tuple[0]},
+    else:
+        xtr_prescribe = {"prescribe": 1/config["prescribe_xtr"]}
+        prediction_tuple = (config["prescribe_xtr"], None, None)
+
     # if config["plot"]["save_to_file"]:
 
     dataloc_dark = config["input_files"]["map_dark"]
@@ -81,7 +87,7 @@ def extrapolation(config, parameters):
         map_dark,
         parameters,
         config["input_files"],
-        {"best_vacuum": 1 / prediction_tuple[0]},
+        xtr_prescribe,
         rfree_flags=rfree,
     )
     return filelocs[0], prediction_tuple
@@ -141,7 +147,11 @@ def comprehensive_xtr_analysis(config):
     parameters = make_folder_name(config)
     base_out = Path(parameters["folder"]).resolve()
     run_id_comb = "vacuum"
-    pdb_name = base_out / f"{run_id_comb}_final.pdb"
+    if "prescribe_xtr" in config:
+        occ_val = config["prescribe_xtr"]
+        pdb_name = base_out / f"{run_id_comb}_{occ_val:.2f}.pdb"
+    else:
+        pdb_name = base_out / f"{run_id_comb}_final.pdb"
 
     if not pdb_name.exists():
         print("pdb name does not exist, running extrapolation and refinement...")
@@ -245,8 +255,12 @@ def evaluate_models_double(
     r_free_model2 = np.array([res["r_free"] for res in results_model2], dtype=float)
 
     fig = plt.figure(figsize=(10, 5))
+    
     plt.axvline(
-        x=expected_occus[0], color="green", linestyle="--", label="Best Vacuum Estimate"
+        x=expected_occus[0], color="blue", linestyle="--", label="Best TV Estimate"
+    )
+    plt.axvline(
+        x=expected_occus[1], color="green", linestyle="--", label="Best K-weighted Estimate"
     )
     plt.plot(occ_vals_tv, r_work_tv, label="TV R-work", marker="o", color="blue")
     plt.plot(occ_vals_tv, r_free_tv, label="TV R-free", marker="o", color="cyan")
@@ -318,6 +332,14 @@ def parsing():
         help="Type of difference map (e.g., 'tv') (optional).",
     )
 
+    parser.add_argument(
+        "--prescribe_xtr",
+        type=float,
+        default=None,
+        help="Skip automatic extrapolation and refinement, and directly prescribe an extrapolated occupancy for evaluation.",
+    )
+
+
     # 3. Parse the arguments from the command line
     return parser.parse_args()
 
@@ -334,6 +356,9 @@ def retrieve_occupancies_from_folder(parameters):
         print(f"File in output folder: {file}")
         # cut file between last xtr and .mtz and print
         # if file.suffix == ".mtz":
+
+        if file.suffix != ".mtz":
+            continue
         try: 
             real_occu =  float(file.stem.split("xtr")[-1])
         except ValueError:
@@ -348,7 +373,6 @@ def main_double(config):
     config_tv = deepcopy(config)
     config_tv["map_processing"]["diffmap_type"] = "tv"
     out_tv = comprehensive_xtr_analysis(config)
-
     expected_occu_tv = retrieve_occupancies_from_folder(out_tv[2])
     config_k = deepcopy(config)
     config_k["map_processing"]["diffmap_type"] = "kweighted"
@@ -373,13 +397,19 @@ def main():
     if args.dmin:
         print(config.general.high_resolution_limit)
         config.general.high_resolution_limit = args.dmin
+
+    config = dict(config)
+    if args.prescribe_xtr is not None:
+        config["prescribe_xtr"] = args.prescribe_xtr
+
     if args.diffmap_type in ["tv", "kweighted"]:
-        config.map_processing.diffmap_type = args.diffmap_type
+        config["map_processing"]["diffmap_type"] = args.diffmap_type
     elif args.diffmap_type in ["both"]:
         main_double(config)
         return
     elif args.diffmap_type is not None:
         raise ValueError(f"Unknown diffmap type: {args.diffmap_type}")
+
     main_single(args, config)
 
 
