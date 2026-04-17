@@ -1,94 +1,95 @@
-# Intro to Xtr-Estimator
+# xtr-estimator
 
-**xtr-estimator** is a Python-based tool designed to estimate extrapolation factors for time-resolved crystallography. It helps researchers determine the optimal scaling for difference maps by analyzing the relationship between dark states and triggered/difference states.
+xtr-estimator estimates extrapolation factors for time-resolved crystallography maps.
+It supports both dark vs triggered map workflows and dark vs precomputed difference-map workflows.
 
----
+## Installation
 
-## 🚀 Installation
-
-This package is intended for local development and research. Installing in **editable mode** ensures that any changes you make to the source code are instantly available in your environment.
-
-### 1. Environment Setup
-Choose any python version >3.11, we tested 3.12 and 3.14 so far
+Python 3.12+ is required.
 
 ```bash
-# Create a fresh environment
-conda create -n xtr-estimator python=3.14 pip
+conda create -n xtr-estimator python=3.12 pip
 conda activate xtr-estimator
-```
-
-### 2. Install the Package
-Clone the repository and install it using `pip`:
-
-```bash
-git clone https://github.com/your-username/xtr_estimator.git
-cd xtr_estimator
 pip install -e .
 ```
 
----
-
-## 🛠 Configuration Modes
-
-The tool supports two primary workflows, determined automatically by the fields present in your configuration:
-
-1.  **Triggered Mode:** Requires a dark map and a triggered (light) map. The tool calculates the difference internally.
-2.  **Difference Mode:** Requires a dark map and a pre-calculated difference map (e.g., `Fo-Fo` or `K-weighted`).
-
-### Configuration Sources
-You can configure an experiment in three ways, which are merged in the following priority:
-1.  **Command Line:** Highest priority (overrides everything).
-2.  **Local YAML:** A user-provided `.yaml` file.
-3.  **Global Defaults:** The package-wide `conf/config.yaml`.
-
----
-
-## 📂 Examples & Usage
-
-The `examples/` directory contains sample data (Photolyase, rsEGFP2) and scripts to help you get started.
-
-### 1. Running via Command Line
-The `main.py` entry point handles relative path resolution. If you provide a path to a YAML file, the tool will try to find MTZ/PDB files relative to that YAML's location.
+For test dependencies:
 
 ```bash
-# Run using a local dataset config
-python -m xtr_estimator.main examples/rsEGFP2/local_config.yaml
-
-# Run with command line overrides
-python -m xtr_estimator.main examples/rsEGFP2/local_config.yaml masking.sigma=5 general.name_machine="custom_run"
+pip install -e ".[tests]"
 ```
 
-### 2. Using in a Script or Notebook
-You can use the `get_config` and `execute_main` functions to run the pipeline programmatically:
+## How the code works
+
+The runtime flow is:
+
+1. Build a validated Settings object.
+2. Load maps according to comparison type:
+   - triggered mode: map_dark + map_triggered
+   - diff mode: map_dark + map_diff
+3. Prepare/scale maps and build an inclusion mask.
+4. Estimate extrapolation factors and generate a plot.
+5. Save the executed config and optional output files.
+
+## Configuration model
+
+Top-level settings groups:
+
+- general
+- input_files
+- masking
+- map_processing
+- plot
+
+Comparison mode is inferred from input_files:
+
+- map_diff present -> diff mode
+- map_triggered present -> triggered mode
+
+If both are present, the model keeps current comparison_type and emits a warning.
+
+## Using the API in Python
 
 ```python
-from xtr_estimator.main import get_config, execute_main
+from xtr_estimator.main import parse_settings, execute_main
 
-# Load a local config and override specific values
-cfg = get_config(
-    data_yaml="examples/rsEGFP2/local_config.yaml",
-    overrides=["masking.sigma=4"]
+config = parse_settings(
+    data_yaml="examples/scripts/pl30ns_meteor.yaml",
+    extra_overrides={
+        "general": {"name_machine": "demo_run"},
+        "plot": {"show_plot": False, "save_to_file": True},
+    },
 )
-cfg.masking.sigma=3 
-cfg["masking"]["sigma"]=6
 
-# Run the estimation pipeline
-execute_main(cfg)
-from xtr_estimator.main import get_config, execute_main
-
-# Load a local config and override specific values
-cfg = get_config(
-    data_yaml="./examples/data/rsEGFP2/local_config.yaml",
-    overrides=["masking.sigma=4"]
-)
-cfg.masking.sigma=3 
-cfg["masking"]["sigma"]=6
-
-# Run the estimation pipeline
-execute_main(cfg)
+prediction = execute_main(config, show=False)
+print(prediction)
 ```
 
----
+Programmatic settings construction is also supported via xtr_estimator.configuration.Settings.
 
-## 👥 Authors
-* **Sebastian Bielfeldt** ([sebastian.bielfeldt@desy.de](mailto:sebastian.bielfeldt@desy.de))
+## CLI entry points
+
+Main entry point:
+
+```bash
+xtr_estimator.plot_xtr run --from_yaml examples/scripts/pl30ns_meteor.yaml
+```
+
+You can add dot-notation overrides as extra args:
+
+```bash
+python -m xtr_estimator.main run --from_yaml examples/scripts/pl30ns_meteor.yaml masking.sigma=5 plot.show_plot=false
+```
+
+## Outputs
+
+By default the pipeline writes:
+
+- executed configuration YAML in general.output_folder
+- several temporary files also in general.output_folder
+- extrapolation figure in general.plot_folder
+
+## Authors
+
+- Sebastian Bielfeldt (sebastian.bielfeldt@desy.de)
+- Thomas Lane (thomas.joseph.lane@gmail.com)
