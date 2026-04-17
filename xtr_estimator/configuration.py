@@ -1,17 +1,13 @@
 import os
-from hydra import initialize, compose
-from omegaconf import OmegaConf, DictConfig
-from xtr_estimator.logger import setup_logger
-logger = setup_logger()
+from pathlib import Path
+from typing import Optional
+from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+import yaml
+from .logger import setup_logger
+import typer
 
-def merge_overrides(cfg, overrides):
-    if isinstance(overrides, list):
-        print("Overriding")
-        overrides_cfg = OmegaConf.from_dotlist(overrides)
-    else:
-        overrides_cfg = OmegaConf.create(overrides)
-    cfg = OmegaConf.merge(cfg, overrides_cfg)
-    return cfg
+logger = setup_logger()
 
 def load_homepath():
     # This function returns the path in which t
@@ -22,260 +18,253 @@ def load_homepath():
     return homepath
 
 
-def load_figurepath():
-    return "."
 
+class BaseModelDictlike(BaseModel):
+    def __getitem__(self, item):
+        try:
+            return getattr(self, item)
+        except AttributeError:
+            raise KeyError(item)
 
-def minimal_masking_config():
-    return {
-        "sigma": 3,
-        "min_blob_size": 0.03,  # in A^3
-        "blocking_radius": 0.1,
-        "blocking_percentile": 1,
-        "exclude_solvent": False,
-        "dark_size_threshold": 0.0,
-        "exclude_large_occupancy_outliers": False,
-    }
-
-
-# def get_base_config():
-#     # load the base config from YAML and return as a dictionary
-#     path = os.path.join(os.path.dirname(__file__), "../conf/config.yaml")
-#     with open(path, "r") as f:
-#         base_cfg = OmegaConf.load(f)
-#         # create dictionary containing only the "masking", "map_processing", and "plot" sections
-#         keys = ["masking", "map_processing", "plot"]
-#         base_dict = {key: base_cfg[key] for key in keys}
-#         for key in keys:
-#              if isinstance(base_dict[key], DictConfig):
-#                 base_dict[key] = OmegaConf.to_container(base_dict[key], resolve=True, throw_on_missing=True)
-#     return base_dict
-
-def get_base_config(overrides=[]):
-    # 'config_path' is relative to this python file
-    # 'version_base' handles compatibility
-    with initialize(version_base=None, config_path="../conf"):
-        # This is where Hydra does the magic: 
-        # It reads config.yaml, sees the 'defaults', and merges simple.yaml
-        cfg = compose(config_name="config", overrides=overrides)
-        print(cfg)
-        
-        # Now extract your keys just like before
-        keys = ["masking", "map_processing", "plot"]
-        
-        # OmegaConf.to_container handles the conversion to a standard dict
-        return {key: OmegaConf.to_container(cfg[key], resolve=True) for key in keys}
-
-def get_config_triggered(
-    dataloc_dark: str,
-    dataloc_light: str,
-    pdbloc_dark: str,
-    columns_dark: dict,
-    columns_triggered: dict,
-    high_resolution_limit: float = 0.1,
-    pdbloc_triggered: str | None = None,
-    name_machine: str = "unnamed_experiment",
-    name_human: str | None = None,
-    outpath: str | None = None,
-):
-    config = {
-        "general": {
-            "name_human": name_human if name_human else name_machine,
-            "name_machine": name_machine,
-            "output_folder": (
-                outpath if outpath else load_homepath() + "tmp/diffmap_data/"
-            ),
-            "map_sampling": 3,
-            "high_resolution_limit": high_resolution_limit,
-            "comparison_type": "triggered",
-        },
-        "input_files": {
-            "map_dark": dataloc_dark,
-            "map_triggered": dataloc_light,
-            "pdb_dark": pdbloc_dark,
-            "pdb_triggered": pdbloc_triggered,
-            "columns_dark": columns_dark,
-            "columns_triggered": columns_triggered,
-            "impose_dark_phases": True,
-            "columns_are_ints": False,
-        },
-    } | get_base_config()
-
-    config["general"]["output_folder"] = f"./tmp/{config['general']['name_machine']}/"
-    config["general"]["pdbloc_dark"] = pdbloc_dark
-    return config
-
-
-def get_custom_config(
-    dataloc_dark: str,
-    dataloc_light: str,
-    pdbloc_dark: str,
-    columns_dark: dict,
-    columns_triggered: dict,
-    high_resolution_limit: float = 0.1,
-    pdbloc_triggered: str | None = None,
-    name_machine: str = "unnamed_experiment",
-    name_human: str | None = None,
-    outpath: str | None = None,
-    config_path: str = "../conf",
-) -> DictConfig:
-
-    # 1. Load the base config from YAML
-    with initialize(version_base=None, config_path=config_path):
-        cfg = compose(config_name="config")
-
-    # 2. Define your overrides as a standard Python dictionary
-    # Note: We match the structure of your YAML exactly
-    
-    if columns_dark.get("ints_column", None) and columns_dark.get("amplitude_column", None):
-        raise ValueError("Cannot specify both 'ints_column' and 'amplitude_column' in columns_dark")
-    columns_are_ints = columns_dark.get("ints_column", None) is not None
-    col_name_dark = "columns_dark_ints" if columns_are_ints else"columns_dark"
-    col_name_triggered = "columns_triggered_ints" if columns_are_ints else "columns_triggered"
-    make_path_explicit = lambda path: os.path.abspath(path) if path else None
-    dataloc_dark = make_path_explicit(dataloc_dark)
-    dataloc_light = make_path_explicit(dataloc_light)
-    pdbloc_dark = make_path_explicit(pdbloc_dark)
-    pdbloc_triggered = make_path_explicit(pdbloc_triggered) 
-    overrides = {
-        "general": {
-            "name_machine": name_machine,
-            "name_human": name_human or name_machine,
-            "high_resolution_limit": high_resolution_limit,
-        },
-        "input_files": {
-            "map_dark": dataloc_dark,
-            "map_triggered": dataloc_light,
-            "pdb_dark": pdbloc_dark,
-            "pdb_triggered": pdbloc_triggered,
-            col_name_dark: columns_dark,
-            col_name_triggered: columns_triggered,
-            "columns_are_ints": columns_are_ints,
-        },
-    }
-
-    # Add optional outpath logic
-    if outpath:
-        overrides["general"]["output_folder"] = outpath
-
-    # 3. Merge the dictionary into the Hydra config
-    # This replaces values in 'cfg' with values from 'overrides'
-    cfg = OmegaConf.merge(cfg, overrides)
-
-    # 4. Validate
-    # This ensures all ${interpolations} work and no ??? remain
-    OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
-
-    return cfg
-
-
-def get_config_diff(
-    dataloc_dark: str,
-    dataloc_diff: str,
-    pdbloc_dark: str,
-    columns_dark: dict,
-    columns_diff: dict,
-    pdbloc_light: str | None = None,
-    high_resolution_limit: float = 0.1,
-    name_machine: str = "unnamed_experiment",
-    name_human: str | None = None,
-    outpath: str | None = None,
-):
-    config = {
-        "general": {
-            "name_human": name_human if name_human else name_machine,
-            "name_machine": name_machine,
-            "output_folder": (
-                outpath if outpath else "./tmp/diffmap_data/"
-            ),
-            "map_sampling": 3,
-            "high_resolution_limit": high_resolution_limit,
-            # "data_type": "diff",  # "triggered" or "diffmap"
-            "comparison_type": "diff",
-        },
-        "input_files": {
-            "map_dark": dataloc_dark,
-            "map_diff": dataloc_diff,
-            "pdb_dark": pdbloc_dark,
-            "pdb_triggered": pdbloc_light,
-            "columns_dark": columns_dark,
-            "columns_diff": columns_diff,
-        },
-    } | get_base_config()
-
-    config["general"]["output_folder"] = f"./tmp/{config['general']['name_machine']}/"
-    config["general"]["pdbloc_dark"] = pdbloc_dark
-
-    return config
-
-def check_paths(cfg: DictConfig, data_path: str) -> DictConfig:
-    data_dir = os.path.dirname(os.path.abspath(data_path))
-
-    # List of keys that contain file paths to resolve
-    path_keys = ["map_dark", "map_triggered", "pdb_dark", "pdb_triggered"]
-
-    for key in path_keys:
-        # Access the value (e.g., cfg.input_files.map_dark)
-        val = cfg.input_files.get(key)
-
-        # If the value exists and is NOT an absolute path
-        if val and not os.path.isabs(val):
-            # Construct path relative to the directory of the YAML file
-            potential_path = os.path.join(data_dir, val)
-
-            # Update config if that file actually exists there
-            if os.path.exists(potential_path):
-                cfg.input_files[key] = os.path.abspath(potential_path)
-                logger.info(f"Resolved relative path for {key}: {cfg.input_files[key]}")
-
-
-
-def get_config(data_yaml=None, overrides=None):
-
-    """
-    The 'Heavy Lifting' config loader.
-    - data_yaml: path to a local conf.yaml
-    - overrides: list of dot-notation strings (e.g. ["general.sigma=5"])
-                 or a dictionary.
-    """
-
-    local_cfg = (
-        OmegaConf.load(data_yaml) if data_yaml and os.path.exists(data_yaml) else None
-    )
-    if local_cfg:
-        if local_cfg.input_files.get("map_diff", None) is not None:
-            print("hi?")
-            mode = "diff"
-        elif local_cfg.input_files.get("map_triggered", None) is not None:
-            print("hi:(?")
-            mode = "triggered"
+    def __setitem__(self, key, value):
+        # This allows config["key"] = value
+        if hasattr(self, key):
+            setattr(self, key, value)
         else:
-            raise ValueError(
-                "Could not determine mode from local config. Please ensure either 'map_diff' or 'map_triggered' is specified."
-            )
-    else:
-        mode = "triggered"  # default mode if no local config provided
-        logger.info("No local config found")
+            # Optional: Allow setting new keys even if not in Pydantic model
+            # but usually you want to stick to defined fields
+            raise KeyError(f"'{type(self).__name__}' has no field '{key}'")
+
+    def keys(self):
+        return self.model_dump().keys()
+
+    def __iter__(self):
+        return iter(self.keys())
 
 
-    with initialize(version_base=None, config_path="../conf"):
-        # Load the base + the mode-specific schema
-        cfg = compose(
-            config_name="config", overrides=[f"general.comparison_type={mode}"]
+# --- Sub-Models for Columns ---
+
+
+class ColumnConfig(BaseModelDictlike):
+    amplitude_column: str = "F"
+    phase_column: str = "PHI"
+    uncertainty_column: str = "SIGF"
+
+
+class IntColumnConfig(BaseModelDictlike):
+    ints_column: str = "I"
+    int_uncertainty_column: str = "SIGI"
+
+
+class DiffColumnConfig(BaseModelDictlike):
+    amplitude_column: str = "FKOFOWT"
+    phase_column: str = "PHIFKOFOWT"
+    uncertainty_column: str = "SIGF"
+
+
+# --- Masking with Presets ---
+
+
+class MaskingSettings(BaseModelDictlike):
+    sigma: Optional[float] = None
+    min_blob_size: Optional[float] = None
+    blocking_radius: Optional[float] = None
+    blocking_percentile: Optional[float] = None
+    exclude_solvent: Optional[bool] = None
+    dark_size_threshold: Optional[float] = None
+    exclude_positive_diffmap: Optional[bool] = None
+    exclude_large_occupancy_outliers: Optional[bool] = False
+
+    @classmethod
+    def no_mask(cls):
+        return cls(
+            sigma=0,
+            min_blob_size=0.1,
+            blocking_radius=1.5,
+            blocking_percentile=1e-5,
+            exclude_solvent=True,
+            dark_size_threshold=0.1,
+            exclude_positive_diffmap=True,
+            exclude_large_occupancy_outliers=False,
         )
 
-    # 2. Merge Local YAML if provided
+    @classmethod
+    def advanced(cls):
+        return cls(
+            sigma=3.0,
+            min_blob_size=3.0,
+            blocking_radius=1.5,
+            blocking_percentile=95.0,
+            exclude_solvent=True,
+            dark_size_threshold=0.1,
+            exclude_positive_diffmap=True,
+            exclude_large_occupancy_outliers=False,
+        )
 
-    if local_cfg:
-        cfg = OmegaConf.merge(cfg, local_cfg)
+    @classmethod
+    def simple(cls):
+        return cls(
+            sigma=3.0,
+            min_blob_size=0.1,
+            blocking_radius=0.1,
+            blocking_percentile=0.1,
+            exclude_solvent=True,
+            dark_size_threshold=0.1,
+            exclude_positive_diffmap=True,
+            exclude_large_occupancy_outliers=False,
+        )
 
-    # 3. Merge Overrides (CLI list or Dictionary)
-    print("Overrides before merge:", overrides)
-    if overrides:
-        cfg = merge_overrides(cfg, overrides)
 
-    if data_yaml:
-        check_paths(cfg, data_yaml)
-    # 4. Final Polish
-    OmegaConf.resolve(cfg)
-    return cfg
+# --- Other Grouped Settings ---
+
+
+class MapProcessingSettings(BaseModelDictlike):
+    diffmap_type: str = "tv"
+    dark_mean_correction: bool = True
+    simple_dark_correction: bool = True
+    calculate_diffmap_before_f000: bool = False
+    preprocessing: bool = False
+
+
+class PlotSettings(BaseModelDictlike):
+    show_ignored_voxels: bool = True
+    set_ylim: bool = False
+    is_composite: bool = False
+    std_cutoff: float = 3.0
+    solvent_density: float = 0.4
+    minimum_datapoints: int = 10
+    show_plot: bool = True
+    save_to_file: bool = True
+    markersize: Optional[float] = 1
+    comparison_to_reference: Optional[bool] = False
+
+
+class InputFileSettings(BaseModelDictlike):
+    data_folder: Optional[str] = None
+    map_dark: str = Field(..., description="MANDATORY")
+    map_triggered: Optional[str] = None
+    map_diff: Optional[str] = None
+    pdb_dark: str = Field(..., description="MANDATORY")
+    pdb_triggered: Optional[str] = None
+    columns_dark: ColumnConfig = ColumnConfig()
+    columns_dark_ints: IntColumnConfig = IntColumnConfig()
+    columns_triggered: ColumnConfig = ColumnConfig()
+    columns_triggered_ints: IntColumnConfig = IntColumnConfig()
+    columns_diff: DiffColumnConfig = DiffColumnConfig()
+    impose_dark_phases: bool = True
+    columns_are_ints: bool = False
+
+
+class GeneralSettings(BaseModelDictlike):
+    name_machine: str = "unnamed_experiment"
+
+    # We use an alias or a different name for the 'input'
+    # to avoid name collisions with the computed property
+    input_name_human: Optional[str] = Field(default=None, alias="name_human")
+    input_output_folder: Optional[str] = Field(default=None, alias="output_folder")
+    input_plot_folder: Optional[str] = Field(default=None, alias="plot_folder")
+    pdbloc_dark: Optional[str] = None
+
+    map_sampling: int = 3
+    high_resolution_limit: float = 0.1
+    comparison_type: str = "triggered"
+
+    @computed_field
+    @property
+    def name_human(self) -> str:
+        return self.input_name_human or self.name_machine
+
+    @computed_field
+    @property
+    def output_folder(self) -> str:
+        if self.input_output_folder:
+            folder = self.input_output_folder.rstrip("/") + "/"
+        else:
+            folder = f"./tmp/{self.name_machine}/"
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    @computed_field
+    @property
+    def plot_folder(self) -> str:
+        if self.input_plot_folder:
+            folder = self.input_plot_folder.rstrip("/") + "/"
+        else:
+            folder = f"./plots/{self.name_machine}/"
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+
+# --- Main Settings (The Entry Point) ---
+
+
+class Settings(BaseSettings):
+    # Nested Modules
+    general: GeneralSettings = GeneralSettings()
+    input_files: InputFileSettings
+    masking: MaskingSettings = MaskingSettings.advanced()
+    map_processing: MapProcessingSettings = MapProcessingSettings()
+    plot: PlotSettings = PlotSettings()
+
+    @model_validator(mode="after")
+    def sync_general_paths(self) -> "Settings":
+        # Injection: Copy pdb_dark from input_files into general
+        self.general.pdbloc_dark = self.input_files.pdb_dark
+        return self
+
+    @model_validator(mode="after")
+    def set_comparison_type(self) -> "Settings":
+        # If map_diff is provided, we assume it's a diff comparison
+        if self.input_files.map_diff and self.input_files.map_triggered:
+            logger.warning(
+                "Both map_diff and map_triggered are provided. Choosing {self.general.comparison_type} as comparison type."
+            )
+        elif self.input_files.map_diff:
+            self.general.comparison_type = "diff"
+        elif self.input_files.map_triggered:
+            self.general.comparison_type = "triggered"
+        else:
+            raise ValueError(
+                "At least one of map_triggered or map_diff must be provided."
+            )
+        return self
+
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        # This allows you to pass {"name_human": "..."} to GeneralSettings
+        # and have it map to input_name_human automatically
+        populate_by_name=True,
+    )
+
+    def __getitem__(self, item):
+        """Allows config['general'] access patterns."""
+        try:
+            return getattr(self, item)
+        except AttributeError:
+            raise KeyError(item)
+
+
+def config_from_yaml(path: Path | str) -> dict:
+    if isinstance(path, str):
+        path = Path(path)
+    final_payload = {}
+    if path and path.exists():
+        with open(path) as f:
+            final_payload = yaml.safe_load(f) or {}
+    else:
+        raise FileNotFoundError(f"YAML file {path} not found.")
+
+    settings = Settings(**final_payload)
+    return settings
+
+def dump_config(settings: Settings):
+    config = settings.model_dump()
+    out_dir = Path(settings.general.output_folder)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    dump_loc = out_dir / "executed_config.yaml"
+    with open(dump_loc, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    typer.secho(f"💾 Config saved to {dump_loc}", fg=typer.colors.BLUE)
+    return config

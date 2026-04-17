@@ -1,14 +1,11 @@
 from xtr_estimator.configuration import load_homepath
 from xtr_estimator.main import execute_main, get_config
 
-from xtr_estimator.config_pydantic import (
+from xtr_estimator.configuration import (
     InputFileSettings,
     GeneralSettings,
     ColumnConfig,
     Settings,
-    MaskingSettings,
-    MapProcessingSettings,
-    PlotSettings,
 )
 
 

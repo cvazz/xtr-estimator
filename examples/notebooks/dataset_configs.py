@@ -1,18 +1,15 @@
 import os
 import numpy as np
-import warnings
 from xtr_estimator.configuration import load_homepath
 from xtr_estimator.main import execute_main
 from xtr_estimator.logger import setup_logger
 
-from xtr_estimator.config_pydantic import (
+from xtr_estimator.configuration import (
     InputFileSettings,
     GeneralSettings,
     ColumnConfig,
     DiffColumnConfig,
-    IntColumnConfig,
     Settings,
-    MaskingSettings,
 )
 
 logger = setup_logger()
@@ -51,18 +48,18 @@ def apply_config_myoglobin_general(idx: str | int) -> dict:
     if not mtzname:
         raise ValueError(f"Could not find matching delay for index {idx}")
 
-    ints_columns = IntColumnConfig(
+    ints_columns = dict(
         ints_column="IMEAN", int_uncertainty_column="SIGIMEAN"
     )
 
     config = Settings(
-        general=GeneralSettings(
+        general=dict(
             name_machine=f"myo_{delay}",
             name_human=f"Myoglobin {delay}",
             high_resolution_limit=2.3,
             comparison_type="triggered",
         ),
-        input_files=InputFileSettings(
+        input_files=dict(
             map_dark=dataloc_dark,
             map_triggered=f"{dataloc}{mtzname}.mtz",
             pdb_dark=pdbloc_dark,
@@ -71,7 +68,7 @@ def apply_config_myoglobin_general(idx: str | int) -> dict:
             columns_are_ints=True,
         ),
     )
-    return config.model_dump()
+    return config
 
 
 # --- Helper for rsEGFP2 ---
@@ -218,7 +215,7 @@ def apply_config_B12_general(idx: int, diff=False) -> dict:
         name_machine=f"B12_{othermap_name.split('mJ')[0]}",
         high_resolution_limit=2.3,
     )
-    input_files = InputFileSettings(
+    input_files_preset = dict(
         map_dark=f"{folderloc}9S06_dark.mtz",
         pdb_dark=f"{folderloc}9S06.pdb",
         pdb_triggered=f"{folderloc}{b12_pdb}" if b12_pdb else None,
@@ -228,11 +225,14 @@ def apply_config_B12_general(idx: int, diff=False) -> dict:
     )
     if diff:
         general.comparison_type = "diff"
-        input_files.map_diff = f"{folderloc}{othermap_name}"
-        input_files.columns_diff = DiffColumnConfig(
+        input_files = InputFileSettings(
+        map_diff = f"{folderloc}{othermap_name}",
+        columns_diff = DiffColumnConfig(
             amplitude_column="QFOFOWT",
             uncertainty_column="SIGF",
             phase_column="PHIQFOFOWT",
+        ),
+        **input_files_preset
         )
     else:
         general.comparison_type = "triggered"

@@ -1,6 +1,7 @@
 from xtr_estimator.logger import setup_logger
 from xtr_estimator.main import execute_main
-from xtr_estimator.configuration import  get_config, get_config_triggered, get_config_diff
+from xtr_estimator.configuration import  Settings, config_from_yaml
+from xtr_estimator.configuration import GeneralSettings,  InputFileSettings, ColumnConfig, DiffColumnConfig
 
 
 
@@ -8,20 +9,20 @@ logger = setup_logger()
 def option1():
     # Load defaults + local yaml
     # Use meteor tv denoise to calculate difference map
-    cfg = get_config(data_yaml="pl30ns_meteor.yaml")
-    execute_main(cfg)
+    config = config_from_yaml(path="pl30ns_meteor.yaml")
+    execute_main(config)
 
 def option2():
-    cfg = get_config(data_yaml="pl30ns_meteor.yaml")
+    config = config_from_yaml(path="pl30ns_meteor.yaml")
     # it is possible to override 'manually' within code
-    cfg.map_processing.diffmap_type = "kweighted" # or "tv", "vanilla"
-    execute_main(cfg)
+    config.map_processing.diffmap_type = "kweighted" # or "tv", "vanilla"
+    execute_main(config)
 
 def option3():
     # or use diffmap directly from input for example from Xtrapol8
     # this yaml does not get give a light/triggered dataset 
     # but rather the location of a difference map
-    cfg = get_config(data_yaml="pl30ns_x8.yaml")
+    cfg = config_from_yaml(path="pl30ns_x8.yaml")
     execute_main(cfg)
 
 def option1_alt():
@@ -44,14 +45,18 @@ def option1_alt():
 
     name_machine= "PL_30ns"
 
-    cfg = get_config_triggered(
-        dataloc_dark=map_dark,
-        dataloc_light=map_triggered,
-        pdbloc_dark=pdb_dark,
-        columns_dark=columns_dark,
-        columns_triggered=columns_triggered,
-        high_resolution_limit=high_resolution_limit,
-        name_machine=name_machine
+    cfg = Settings(
+            input_files = InputFileSettings(
+                map_dark=map_dark,
+                map_triggered=map_triggered,
+                pdb_dark=pdb_dark,
+                columns_dark=ColumnConfig(**columns_dark),
+                columns_triggered=ColumnConfig(**columns_triggered),
+            ),
+        general=GeneralSettings(
+            high_resolution_limit=high_resolution_limit,
+            name_machine=name_machine
+        )
     )
     execute_main(cfg)
 
@@ -74,22 +79,25 @@ def option3_alt():
     high_resolution_limit= 2.6
     name_machine= "PL_30ns_x8"
 
-    cfg = get_config_diff(
-        dataloc_dark=map_dark,
-        dataloc_diff=map_diff,
-        pdbloc_dark=pdb_dark,
-        columns_dark=columns_dark,
-        columns_diff=columns_diff,
-        high_resolution_limit=high_resolution_limit,
-        name_machine=name_machine
+    cfg = Settings(
+            input_files = InputFileSettings(
+                map_dark=map_dark,
+                map_diff=map_diff,
+                pdb_dark=pdb_dark,
+                columns_dark=ColumnConfig(**columns_dark),
+                columns_diff=DiffColumnConfig(**columns_diff),
+            ),
+        general=GeneralSettings(
+            high_resolution_limit=high_resolution_limit,
+            name_machine=name_machine
+        )
     )
-    print(cfg["general"]["output_folder"])
     execute_main(cfg)
 
 def main():
     # get_base_config()
-    option1()
-    option1_alt()
+    # option1()
+    # option1_alt()
     option2()
     option3()
     option3_alt()

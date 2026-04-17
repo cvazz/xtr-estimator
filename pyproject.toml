@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xtr-estimator"
-version = "0.3.0"
+version = "0.4.0"
 description = "estimate extrapolation factors for time resolved crystallography difference maps"
 readme = "README.md"
 authors = [
@@ -21,9 +21,13 @@ dependencies = [
     "meteor-maps >= 0.4.1",
     "matplotlib >= 3.9.0",
     "jupyterlab >= 4.4.0",
-    "hydra-core >= 1.3.0", 
     "pyqt6 >= 6.5.0",
+    "pydantic-settings",
+    "typer",
 ]
+
+[project.scripts]
+'xtr_estimator.plot_xtr' = "xtr_estimator.main:main"
 
 [tool.setuptools]
 # This tells setuptools that the "xtr_estimator" package is 

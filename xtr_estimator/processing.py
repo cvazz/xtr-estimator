@@ -114,7 +114,6 @@ def check_highres_limit(
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
     high_res_limit = float(np.round(max(dmin_dark, dmin_triggered), 1))
-    print((type(high_res_limit), high_res_limit, type(general_config["high_resolution_limit"]), general_config["high_resolution_limit"]))
 
     if not np.isclose(dmin_dark, dmin_triggered):
         logger.warning(
@@ -217,7 +216,7 @@ def calculate_diffmaps(
 
 
 def get_meta_loc(general_config):
-    output_folder = general_config.get("output_folder", "./results/")
+    output_folder = general_config["output_folder"]
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     evaluation_path_basis = output_folder + general_config["name_machine"] + "/"
@@ -709,7 +708,6 @@ def prepare_maps(
 
 def get_map_dark(config, old=False):
     ds_dark = rs.read_mtz(config["input_files"]["map_dark"])
-    print(np.min(ds_dark.compute_dHKL()["dHKL"]))
     struc_dark = gemmi.read_pdb(config["input_files"]["pdb_dark"])
     map_dark_comp = gemmi_structure_to_calculated_map(
         struc_dark,
@@ -730,13 +728,13 @@ def get_map_dark(config, old=False):
     if old:
         map_dark, shift2 = autoshift_rsmap_old(
             copy.deepcopy(map_dark),
-            config["general"] | {"pdbloc_dark": config["input_files"]["pdb_dark"]},
+            config["general"],
             map_dark_comp,
         )
     else:
         map_dark, shift1 = autoshift_rsmap(
             copy.deepcopy(map_dark),
-            config["general"] | {"pdbloc_dark": config["input_files"]["pdb_dark"]},
+            config["general"],
             map_dark_comp,
         )
     return map_dark

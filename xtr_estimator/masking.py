@@ -251,9 +251,9 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
         _description_
     """
     parameters = config["masking"]
-    map_sampling = config["general"].get("map_sampling", 3)
-    pdbloc_dark = config["input_files"].get("pdb_dark", None)
-    dark_size_std_threshold = parameters.get("dark_size_threshold", 1)
+    map_sampling = config["general"]["map_sampling"]
+    pdbloc_dark = config["input_files"]["pdb_dark"]
+    dark_size_std_threshold = parameters["dark_size_threshold"]
     diffmap_np = diffmap.to_3d_numpy_map(map_sampling=map_sampling)
 
     ### Find all negative blobs ###
@@ -268,7 +268,7 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
 
     mask_np = positive_density_blocking(diffmap, mask_np, config)
 
-    if parameters.get("exclude_solvent", True):
+    if parameters["exclude_solvent"]:
         only_solvent = support_from_masker(
             pdbloc_dark, mask_np.shape, gemmi.AtomicRadiiSet.Cctbx
         )
@@ -313,14 +313,14 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
         if number_negative_darks:
             logger.warning(log_text)
 
-    if parameters.get("exclude_positive_diffmap", True):
+    if parameters["exclude_positive_diffmap"]:
         log_text = ""
         log_text += "Excluding voxels with positive difference density from mask"
         log_text += " (activate via 'exclude_positive_diffmap' parameter)"
         logger.warning(log_text)
         mask_np = np.logical_and(mask_np, diffmap_np < 0)
 
-    if parameters.get("exclude_large_occupancy_outliers", False):
+    if parameters["exclude_large_occupancy_outliers"]:
         map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
         mask_np_before = np.sum(mask_np)
         outliers = (

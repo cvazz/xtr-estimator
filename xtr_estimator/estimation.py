@@ -79,7 +79,7 @@ def cummean_and_errors(stats_data, leng_shown=None, number_sym_ops=1, plot_confi
         np.abs(pseudo_sort[i] - pseudo_sort[i // 2]) for i in range(len(pseudo_sort))
     ]
 
-    solvent_density = plot_config.get("solvent_density", 0.3)
+    solvent_density = plot_config["solvent_density"]
     thresh_line = diff2[argsorted] / solvent_density
 
     return {
@@ -95,7 +95,7 @@ def cummean_and_errors(stats_data, leng_shown=None, number_sym_ops=1, plot_confi
 
 
 def compact_v3(cummean_dict, plot_config={}):
-    std_cutoff = plot_config.get("std_cutoff", 3.0)
+    std_cutoff = plot_config["std_cutoff"]
     thresh_line = cummean_dict["thresh_line"]
     average_distance_mask = (
         cummean_dict["pseudo_sort"] + std_cutoff * cummean_dict["pseudo_std"]
@@ -120,11 +120,11 @@ def compact_v3(cummean_dict, plot_config={}):
         return np.nan, np.nan
 
 
-def create_plot_v3(
+def create_plot(
     stats, cummean_dict, extra_info={}, ax=None, plot_config={}
 ) -> tuple[Figure, Axes, tuple[float, float]]:
-    std_cutoff = plot_config.get("std_cutoff", 3.0)
-    markersize = plot_config.get("markersize", 1)
+    std_cutoff = plot_config["std_cutoff"]
+    markersize = plot_config["markersize"]
     thresh_line = cummean_dict["thresh_line"]
     average_distance_mask = (
         cummean_dict["pseudo_sort"] + std_cutoff * cummean_dict["pseudo_std"]
@@ -249,8 +249,8 @@ def create_plot_v3(
         text = ""
         text += f" {chi} =  {middle_mean:.3f}"
         text += f"\nSt. Dev.: {plot_stats['middle_std']:.3f} ({plot_stats['middle_std_rel']:.1%})"
-        if plot_config.get("comparison_to_reference", False):
-            text += f"\nReference: {plot_config['comparison_to_reference']['value']:.3f} (1/{1/plot_config['comparison_to_reference']['value']:.1f})"
+        # if plot_config["comparison_to_reference"]:
+        #     text += f"\nReference: {plot_config['comparison_to_reference']['value']:.3f} (1/{1/plot_config['comparison_to_reference']['value']:.1f})"
         if np.min(pseudo_range) < middle_mean - plot_stats["middle_std"] and False:
             text += "\nWarning: Min. est. less than\n1 std. dev. than reported est."
         if np.max(pseudo_range) > middle_mean + plot_stats["middle_std"] and False:
@@ -266,7 +266,7 @@ def create_plot_v3(
         prediction_tuple = (np.nan, np.nan)
 
     # 4. Formatting
-    if not plot_config.get("is_composite", False):
+    if not plot_config["is_composite"]:
         ax.set_ylabel("Extrapolation factor " + r"$ \chi^{-1} = -\Delta\rho/\rho_{0}$")
         ax.set_xlabel("Difference Map " + r"$-\Delta \rho$ (standard deviations)")
         # ax.legend(loc="upper left")
@@ -295,7 +295,7 @@ def create_plot_v3(
         ax2.set_xlim((-cummean_dict["diff_sorted"][0]) * 1.1, 0.0)
         ax2.set_xlabel(r"$-\Delta \rho$ (absolute units)")
 
-    if plot_config.get("set_ylim", False):
+    if plot_config["set_ylim"]:
         ax.set_ylim(*plot_config["set_ylim"])
     return fig, ax, prediction_tuple
 
@@ -316,7 +316,7 @@ def plot_extrapolation_estimate(
         f"Mean of diffmap_np: {np.mean(diffmap_np)}, Mean of map_dark_np: {np.mean(map_dark_np)}"
     )
     stats_data = _calculate_statistics(diffmap_np, map_dark_np, inclusion_mask)
-    cummean_dict = cummean_and_errors(stats_data, number_sym_ops=1)
+    cummean_dict = cummean_and_errors(stats_data, number_sym_ops=1, plot_config=config["plot"])
     # trend_data = _analyze_threshold_trends(
     #     stats_data["diffmap_masked"],
     #     stats_data["pseudo_occupancy"],
@@ -325,4 +325,4 @@ def plot_extrapolation_estimate(
     # 5. Visualization
     if compact:
         return None, None, compact_v3(cummean_dict, plot_config=config["plot"])
-    return create_plot_v3(stats_data, cummean_dict, plot_config=config["plot"], ax=ax)
+    return create_plot(stats_data, cummean_dict, plot_config=config["plot"], ax=ax)
