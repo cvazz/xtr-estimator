@@ -50,5 +50,5 @@ def test_overrides(tmp_path) -> dict:
             high_resolution_limit=5, output_folder=temp_dir, plot_folder=temp_dir
         ),
         map_processing=dict(diffmap_type="vanilla"),
-        plot=dict(save_to_file=False, show_plot=False),
+        plot=dict(save_to_file=True, show_plot=False),
     )
