@@ -17,8 +17,7 @@ from meteor import rsmap
 from meteor.sfcalc import gemmi_structure_to_calculated_map
 from meteor.utils import cut_resolution
 
-from .configuration import load_homepath, minimal_masking_config
-from .configuration import get_config_diff
+from .configuration import Settings, load_homepath
 from .masking import make_inclusion_mask
 from .estimation import plot_extrapolation_estimate
 from .logger import setup_logger
@@ -442,15 +441,12 @@ def cleanup_data(folder_path):
     # Path(run_folder).unlink()
 
 
-def prepare_data(folder_path, reference_pdb, dmin):
+def prepare_data(folder_path, pdb_dark, dmin):
     actual_folder = list(folder_path.keys())[0]
     options = folder_path[actual_folder]
-    reference_mtz = (
-        load_homepath() + "occupancy-estimation/" + actual_folder + "map_dark.mtz"
-    )
-    difference_mtz = (
-        load_homepath() + "occupancy-estimation/" + actual_folder + "x8x8x8_mFoFo.mtz"
-    )
+    initial_path = load_homepath() + "../occupancy-estimation/" + actual_folder
+    map_dark = initial_path + "map_dark.mtz"
+    map_diff = initial_path + "x8x8x8_mFoFo.mtz"
 
     name_machine = "sim_rsEFGP2"
 
@@ -459,16 +455,31 @@ def prepare_data(folder_path, reference_pdb, dmin):
         "phase_column": "PHIC",
         "uncertainty_column": "SIGF",
     }
-    config = get_config_diff(
-        reference_mtz,
-        difference_mtz,
-        reference_pdb,
-        col_dict,
-        col_dict,
-        name_machine=name_machine,
-        high_resolution_limit=dmin,
+
+    columns_dark = dict(
+        amplitude_column="F-obs-filtered",
+        phase_column="PHIF-model",
+        uncertainty_column="SIGF-obs-filtered",
     )
-    struc_dark = gemmi.read_pdb(reference_pdb)
+    columns_diff = dict(
+        amplitude_column="KFOFOWT", phase_column="PHIKFOFOWT", uncertainty_column="SIGF"
+    )
+    high_resolution_limit = 2.6
+    name_machine = "PL_30ns_x8"
+
+    config = Settings(
+        input_files=dict(
+            map_dark=map_dark,
+            map_diff=map_diff,
+            pdb_dark=pdb_dark,
+            columns_dark=columns_dark,
+            columns_diff=columns_diff,
+        ),
+        general=dict(
+            high_resolution_limit=high_resolution_limit, name_machine=name_machine
+        ),
+    )
+    struc_dark = gemmi.read_pdb(pdb_dark)
     map_dark_comp = gemmi_structure_to_calculated_map(
         struc_dark,
         high_resolution_limit=dmin,
@@ -477,7 +488,7 @@ def prepare_data(folder_path, reference_pdb, dmin):
     config["masking"]["exclude_large_occupancy_outliers"] = False
     config["masking"]["dark_size_threshold"] = -1
 
-    ds_dark = rs.read_mtz(reference_mtz)
+    ds_dark = rs.read_mtz(map_dark)
     ds_dark["PHIC"] = map_dark_comp.phases
 
     map_dark = rsmap.Map(ds_dark, amplitude_column="F", phase_column="PHIC")  # type: ignore
@@ -486,16 +497,11 @@ def prepare_data(folder_path, reference_pdb, dmin):
     map_dark = cut_resolution(map_dark, high_resolution_limit=dmin)
     map_dark.sort_index(inplace=True)
 
-    ds_diff = rs.read_mtz(difference_mtz)
+    ds_diff = rs.read_mtz(map_diff)
     diffmap_columns = dict(amplitude_column="FOFOWT", phase_column="PHIFOFOWT")
     diffmap = rsmap.Map(ds_diff, **diffmap_columns)  # type: ignore
 
-    xtrapolate_pickle = (
-        load_homepath()
-        + "occupancy-estimation/"
-        + actual_folder
-        + "alpha_occupancy_determination_Fextr.pickle"
-    )
+    xtrapolate_pickle = initial_path + "alpha_occupancy_determination_Fextr.pickle"
     data = load_xtrapol8_data(xtrapolate_pickle)
     output = {
         "config": config,
@@ -520,7 +526,7 @@ def make_figure_vary_inside(input_data):
     except ValueError:
         inclusion_mask = None
     config_nse = copy.deepcopy(config)
-    config_nse["masking"] = minimal_masking_config()
+    config_nse.masking.simple()
     inclusion_mask_nse = make_inclusion_mask(diffmap, map_dark, config_nse)
 
     try:
@@ -635,7 +641,7 @@ def make_single_figure(input_data):
     except ValueError:
         inclusion_mask = None
     config_nse = copy.deepcopy(config)
-    config_nse["masking"] = minimal_masking_config()
+    config_nse.masking.simple()
     inclusion_mask_nse = make_inclusion_mask(diffmap, map_dark, config_nse)
 
     # 1. Create the main figure
