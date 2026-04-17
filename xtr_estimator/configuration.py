@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
@@ -119,7 +119,7 @@ class MaskingSettings(BaseModelDictlike):
 
 
 class MapProcessingSettings(BaseModelDictlike):
-    diffmap_type: str = "tv"
+    diffmap_type: Literal["tv", "vanilla", "kweighted"] = "tv"
     dark_mean_correction: bool = True
     simple_dark_correction: bool = True
     calculate_diffmap_before_f000: bool = False

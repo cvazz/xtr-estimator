@@ -102,16 +102,14 @@ def apply_config_rsEGFP2() -> dict:
     return config.model_dump()
 
 
-# --- Helper for Photolyase ---
-
-
 def apply_config_PL_general(
     name_ending: str | int, add_light=False, diff=False
 ) -> dict:
     homepath = load_homepath()
     folderloc = f"{homepath}examples/data/photolyase/"
+    folders = [f for f in os.listdir(folderloc) if (f[:2] != "1_") and f[0].isdigit()]
+    folders = sorted(folders, key=lambda x: int(x.split('_')[0]))
 
-    folders = [f for f in os.listdir(folderloc) if f[:2] != "1_" or f[:1] != "."]
     out = None
     for ii, f in enumerate(folders):
         if (isinstance(name_ending, str) and f.endswith(name_ending)) or (
@@ -256,7 +254,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # print(get_folders_B12_diff_with_pdb())
-    # print(get_folders_B12())
-    # print(apply_config_B12_general_light(0))
     main()

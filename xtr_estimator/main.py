@@ -1,15 +1,13 @@
 import typer
 import yaml
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pathlib import Path
 import matplotlib.pyplot as plt
 
 from .masking import make_inclusion_mask
 from .processing import get_maps, get_maps_diff, prepare_maps
 from .estimation import plot_extrapolation_estimate
-
-# Assuming your settings class is in configuration.py
-from xtr_estimator.configuration import Settings, dump_config
+from .configuration import Settings, dump_config
 
 app = typer.Typer(help="XTR Estimator Analysis Pipeline")
 
@@ -48,15 +46,14 @@ def parse_extra_args(extra_args: List[str]) -> dict:
 
     return overrides
 
+
 def merge_dicts(all_settings, test_overrides):
     for section in test_overrides:
         if section not in all_settings:
-            print(f"Warning: Section '{section}' from overrides not in base config. Adding it.")
             all_settings[section] = {}
         for key in test_overrides[section]:
             all_settings[section][key] = test_overrides[section][key]
     return all_settings
-
 
 
 def execute_main(config: dict, save2file: bool = False, show: bool = True) -> None:
@@ -157,9 +154,12 @@ def run(
     ),
     # --- General Settings (None as default to allow YAML overrides) ---
     name: Optional[str] = typer.Option(None, "--name"),
-    human_name: Optional[str] = typer.Option(None, "--human_name"),
-    res: Optional[float] = typer.Option(None, "--res"),
-    mode: Optional[str] = typer.Option(None, "--mode"),
+    dmin: Optional[float] = typer.Option(
+        None, "--dmin", help="Set high resolution limit"
+    ),
+    diffmap_type: Optional[Literal["tv", "vanilla", "kweighted"]] = typer.Option(
+        None, "--diffmap_type", help="Choose diffmap type (tv, vanilla, kweighted)"
+    ),
     # --- Input File Settings (Optional in Typer, Mandatory in Pydantic) ---
     map_dark: Optional[Path] = typer.Option(
         None, "--map_dark", help="Path to dark MTZ"
@@ -181,9 +181,8 @@ def run(
 
     explicit_tuples = [
         ("general", "name_machine", name),
-        ("general", "name_human", human_name),
-        ("general", "high_resolution_limit", res),
-        ("general", "comparison_type", mode),
+        ("general", "high_resolution_limit", dmin),
+        ("map_processing", "diffmap_type", diffmap_type),
         ("input_files", "map_dark", map_dark),
         ("input_files", "pdb_dark", pdb_dark),
         ("input_files", "map_triggered", map_trig),
@@ -201,6 +200,7 @@ def main():
     typer.echo("Welcome to the XTR Estimator CLI!")
     typer.echo("Use --help for available options.")
     app()
+
 
 if __name__ == "__main__":
     main()
