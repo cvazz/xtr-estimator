@@ -252,6 +252,8 @@ def create_plot(
             text += "\nWarning: Min. est. less than\n1 std. dev. than reported est."
         if np.max(pseudo_range) > middle_mean + plot_stats["middle_std"] and False:
             text += "\nWarning: Max. est. more than\n1 std. dev. than reported est."
+        if np.min(pseudo_range)/np.max(pseudo_range) < 2/3:
+            text += "\nWarning: Large variation in estimates\nCheck the plot for details."
         # text += f"\nMin-Max Variation: {plot_stats['variation_range']:.1%}"
         # text += f"\n Estimation Range: {plot_stats['estimation_range']:.0%}"
         # place legend like box in top right corner

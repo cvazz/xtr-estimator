@@ -157,7 +157,7 @@ def apply_config_PL_general(
         general=gen_settings,
         input_files=input_files,
     )
-    return config.model_dump()
+    return config
 
 
 # --- Helper for B12 (Difference Map Path) ---
@@ -242,7 +242,7 @@ def apply_config_B12_general(idx: int, diff=False) -> dict:
         general=general,
         input_files=input_files,
     )
-    return config.model_dump()
+    return config
 
 
 # --- Main Logic ---

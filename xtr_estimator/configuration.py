@@ -290,6 +290,8 @@ def merge_dicts(all_settings, test_overrides):
 def merge_settings(base_settings: Settings, extra_settings: Settings | dict) -> Settings:
     if isinstance(extra_settings, Settings):
         extra_settings = extra_settings.model_dump()
+    elif not extra_settings:
+        return base_settings
     base_dict = base_settings.model_dump()
     merged_dict = merge_dicts(base_dict, extra_settings)
     return Settings(**merged_dict)
