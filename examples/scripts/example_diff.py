@@ -23,7 +23,7 @@ def option3():
     # this yaml does not get give a light/triggered dataset 
     # but rather the location of a difference map
     cfg = config_from_yaml(path="pl30ns_x8.yaml")
-    execute_main(cfg)
+    execute_main(cfg, save2file=True, showplots=False)
 
 def option1_alt():
     # or use diffmap directly from input for example from Xtrapol8
@@ -58,7 +58,7 @@ def option1_alt():
             name_machine=name_machine
         )
     )
-    execute_main(cfg)
+    execute_main(cfg, save2file=True, showplots=False)
 
 def option3_alt():
     # or use diffmap directly from input for example from Xtrapol8
@@ -96,8 +96,8 @@ def option3_alt():
 
 def main():
     # get_base_config()
-    # option1()
-    # option1_alt()
+    option1()
+    option1_alt()
     option2()
     option3()
     option3_alt()

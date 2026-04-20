@@ -1,5 +1,5 @@
 from xtr_estimator.configuration import load_homepath
-from xtr_estimator.main import execute_main, get_config
+from xtr_estimator.main import execute_main
 
 from xtr_estimator.configuration import (
     InputFileSettings,
