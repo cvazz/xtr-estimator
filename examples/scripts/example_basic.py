@@ -1,11 +1,15 @@
 from xtr_estimator.configuration import load_homepath
-from xtr_estimator.main import execute_main, get_config
+from xtr_estimator.main import execute_main
+
 
 from xtr_estimator.configuration import (
     InputFileSettings,
     GeneralSettings,
     ColumnConfig,
     Settings,
+    MapProcessingSettings,
+    PlotSettings,
+    MaskingSettings
 )
 
 
@@ -35,9 +39,19 @@ def apply_config_rsEGFP2() -> dict:
                 uncertainty_column="SIGF_on",
             ),
         ),
+        map_processing=MapProcessingSettings(
+                calculate_diffmap_before_f000=False
+        ),
+        masking=MaskingSettings.simple(
+        ),
+        plot= PlotSettings(
+            solvent_density = 0.3,
+        ),
+    )
+    # config.masking.dark_size_threshold= 0.1
         # You can specify a preset here if needed:
         # masking=MaskingSettings.advanced()
-    )
+
 
     # Return as a dictionary for backwards compatibility with your existing pipeline
     return config.model_dump()

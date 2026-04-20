@@ -31,12 +31,11 @@ def _calculate_statistics(
     basic weights and divisions.
     """
     # Division (Occupancy Factor proxy)
-    solvent_level = -0.0
-    pseudo_occupancy = -diffmap_np[mask_np] / (map_dark_np[mask_np] - solvent_level)
-    mask_inv = np.logical_and(~mask_np, map_dark_np != 0)
-    pseudo_occupancy_inv = -diffmap_np[mask_inv] / (
-        map_dark_np[mask_inv] - solvent_level
-    )
+    not_zero = map_dark_np != 0
+    mask_inv = np.logical_and(~mask_np, not_zero)
+
+    pseudo_occupancy = -diffmap_np[mask_np] / map_dark_np[mask_np]
+    pseudo_occupancy_inv = -diffmap_np[mask_inv] / map_dark_np[mask_inv]
 
     weight = np.abs(diffmap_np[mask_np])
 
@@ -142,15 +141,13 @@ def create_plot(
     else:
         fig = ax.get_figure()
     ########################## Data ###################################
-    ax.plot(
-        stats["diffmap_sigma"],
-        stats["pseudo_occupancy"],
-        label="Voxel Prediction",
-        marker=marker,
-        markersize=markersize,
-        linestyle="",
-        alpha=0.5,
-    )
+    base_dot_kwargs = dict(marker=marker, linestyle="", alpha=0.5)
+    dot_kwargs = base_dot_kwargs | dict(markersize=markersize, color="blue")
+    dot_kwargs["label"] = ("Voxel Prediction",)
+    inv_dot_kwargs = dot_kwargs | dict(markersize=markersize / 2, color="gray")
+    inv_dot_kwargs["label"] = ("Ignored Voxels",)
+    ax.plot(stats["diffmap_sigma"], stats["pseudo_occupancy"], **dot_kwargs)
+    ax.plot(stats["diffmap_inv"], stats["pseudo_occupancy_inv"], **inv_dot_kwargs)
     ax.fill_between(
         -cummean_dict["diff_sigma"],
         cummean_dict["pseudo_sort"] - cummean_dict["pseudo_std"],
@@ -316,7 +313,9 @@ def plot_extrapolation_estimate(
         f"Mean of diffmap_np: {np.mean(diffmap_np)}, Mean of map_dark_np: {np.mean(map_dark_np)}"
     )
     stats_data = _calculate_statistics(diffmap_np, map_dark_np, inclusion_mask)
-    cummean_dict = cummean_and_errors(stats_data, number_sym_ops=1, plot_config=config["plot"])
+    cummean_dict = cummean_and_errors(
+        stats_data, number_sym_ops=1, plot_config=config["plot"]
+    )
     # trend_data = _analyze_threshold_trends(
     #     stats_data["diffmap_masked"],
     #     stats_data["pseudo_occupancy"],
