@@ -1,5 +1,5 @@
 from xtr_estimator.configuration import load_homepath
-from xtr_estimator.main import execute_main
+from xtr_estimator.main import execute_as_main
 
 
 from xtr_estimator.configuration import (
@@ -64,7 +64,7 @@ def main():
     # Manual override in code
     # cfg.general.name_human = "Modified_Experiment (Example)"
     
-    execute_main(cfg, save2file=True)
+    execute_as_main(cfg, save2file=True)
 
 
 

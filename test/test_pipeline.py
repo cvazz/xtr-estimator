@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from xtr_estimator.main import execute_main, parse_settings, merge_dicts
+from xtr_estimator.main import execute_as_main, parse_settings, merge_dicts
 from xtr_estimator.configuration import Settings
 
 
@@ -10,7 +10,7 @@ def test_pipeline_example_yaml_meteor(yaml_folder, test_overrides):
     yaml_path = os.path.join(yaml_folder, "pl30ns_meteor.yaml")
     cfg = parse_settings(data_yaml=yaml_path, extra_overrides=test_overrides)
 
-    prediction = execute_main(cfg, show=False)
+    prediction = execute_as_main(cfg, show=False)
 
     assert prediction is not None
     plot_file = Path(cfg.general.plot_folder) / (
@@ -24,7 +24,7 @@ def test_pipeline_example_yaml_x8_diff(yaml_folder, test_overrides):
     yaml_path = os.path.join(yaml_folder, "pl30ns_x8.yaml")
     cfg = parse_settings(data_yaml=yaml_path, extra_overrides=test_overrides)
 
-    prediction = execute_main(cfg, show=False)
+    prediction = execute_as_main(cfg, show=False)
 
     assert cfg.general.comparison_type == "diff"
     assert prediction is not None
@@ -62,7 +62,7 @@ def test_pipeline_programmatic_triggered(data_folder, test_overrides):
     all_settings = merge_dicts(all_settings, test_overrides)
     cfg = Settings(**all_settings)
 
-    prediction = execute_main(cfg, show=False)
+    prediction = execute_as_main(cfg, show=False)
 
     assert prediction is not None
     plot_file = Path(cfg.general.plot_folder) / (
@@ -99,7 +99,7 @@ def test_pipeline_programmatic_diff(data_folder, test_overrides):
     all_settings = merge_dicts(all_settings, test_overrides)
     cfg = Settings(**all_settings)
 
-    prediction = execute_main(cfg, show=False)
+    prediction = execute_as_main(cfg, show=False)
 
     assert prediction is not None
     plot_file = Path(cfg.general.plot_folder) / (

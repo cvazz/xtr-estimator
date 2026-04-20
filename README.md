@@ -51,7 +51,7 @@ If both are present, the model keeps current comparison_type and emits a warning
 ## Using the API in Python
 
 ```python
-from xtr_estimator.main import parse_settings, execute_main
+from xtr_estimator.main import parse_settings, execute_as_main
 
 config = parse_settings(
     data_yaml="examples/scripts/pl30ns_meteor.yaml",
@@ -61,7 +61,7 @@ config = parse_settings(
     },
 )
 
-prediction = execute_main(config, show=False)
+prediction = execute_as_main(config, show=False)
 print(prediction)
 ```
 

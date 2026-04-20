@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from xtr_estimator.configuration import load_homepath
-from xtr_estimator.main import execute_main
+from xtr_estimator.main import execute_as_main
 from xtr_estimator.logger import setup_logger
 
 from xtr_estimator.configuration import (
@@ -250,7 +250,7 @@ def apply_config_B12_general(idx: int, diff=False) -> dict:
 
 def main():
     cfg = apply_config_rsEGFP2()
-    execute_main(cfg, save2file=True)
+    execute_as_main(cfg, save2file=True)
 
 
 if __name__ == "__main__":

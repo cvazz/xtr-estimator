@@ -8,6 +8,9 @@ from .masking import make_inclusion_mask
 from .processing import get_maps, get_maps_diff, prepare_maps
 from .estimation import plot_extrapolation_estimate
 from .configuration import Settings, dump_config, merge_dicts
+from .logger import setup_logger
+
+logger = setup_logger()
 
 app = typer.Typer(help="XTR Estimator Analysis Pipeline")
 
@@ -48,13 +51,12 @@ def parse_extra_args(extra_args: List[str]) -> dict:
 
 
 
-
-def execute_main(config: dict, save2file: bool = False, show: bool = True) -> None:
-    """The actual processing logic."""
-    # Ensure we have regular dict
+def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None) -> tuple:
     if config["general"]["comparison_type"] == "diff":
-        map_dark, diffmap = get_maps_diff(config)
+        map_dark, diffmap = get_maps_diff(config, map_dark=map_dark_base)
     elif config["general"]["comparison_type"] == "triggered":
+        if map_dark_base is not None:
+            logger.warning("map_dark_base provided but will be ignored in triggered mode.")
         unscaled_dark, unscaled_triggered = get_maps(config)
         diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
     else:
@@ -65,7 +67,12 @@ def execute_main(config: dict, save2file: bool = False, show: bool = True) -> No
     fig, ax, prediction_tuple = plot_extrapolation_estimate(
         diffmap, map_dark, inclusion_mask, config
     )
+    return fig, ax, prediction_tuple, map_dark
 
+def execute_as_main(config: Settings | dict, save2file: bool = False, show: bool = True) -> None:
+    """The actual processing logic."""
+    # Ensure we have regular dict
+    fig, _, prediction_tuple = xtr_logic(config, ax=None)
     filename = f"{config['general']['name_machine']}_extrapolation_estimate.png"
     full_filename = Path(config["general"]["plot_folder"]) / filename
 
@@ -186,7 +193,7 @@ def run(
     settings = parse_settings(profile, explicit_tuples, extra_overrides)
     # 5. Save and Execute
     config = dump_config(settings)
-    execute_main(config, save2file=True)
+    execute_as_main(config, save2file=True)
 
 
 def main():

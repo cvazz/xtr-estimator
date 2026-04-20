@@ -1,5 +1,5 @@
 from xtr_estimator.logger import setup_logger
-from xtr_estimator.main import execute_main
+from xtr_estimator.main import execute_as_main
 from xtr_estimator.configuration import  Settings, config_from_yaml
 from xtr_estimator.configuration import GeneralSettings,  InputFileSettings, ColumnConfig, DiffColumnConfig
 
@@ -10,20 +10,20 @@ def option1():
     # Load defaults + local yaml
     # Use meteor tv denoise to calculate difference map
     config = config_from_yaml(path="pl30ns_meteor.yaml")
-    execute_main(config)
+    execute_as_main(config)
 
 def option2():
     config = config_from_yaml(path="pl30ns_meteor.yaml")
     # it is possible to override 'manually' within code
     config.map_processing.diffmap_type = "kweighted" # or "tv", "vanilla"
-    execute_main(config)
+    execute_as_main(config)
 
 def option3():
     # or use diffmap directly from input for example from Xtrapol8
     # this yaml does not get give a light/triggered dataset 
     # but rather the location of a difference map
     cfg = config_from_yaml(path="pl30ns_x8.yaml")
-    execute_main(cfg)
+    execute_as_main(cfg)
 
 def option1_alt():
     # or use diffmap directly from input for example from Xtrapol8
@@ -58,7 +58,7 @@ def option1_alt():
             name_machine=name_machine
         )
     )
-    execute_main(cfg)
+    execute_as_main(cfg)
 
 def option3_alt():
     # or use diffmap directly from input for example from Xtrapol8
@@ -92,7 +92,7 @@ def option3_alt():
             name_machine=name_machine
         )
     )
-    execute_main(cfg)
+    execute_as_main(cfg)
 
 def main():
     # get_base_config()
