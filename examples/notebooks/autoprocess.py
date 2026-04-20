@@ -34,16 +34,24 @@ def make_folder_name(config):
     general_config = config["general"]
     diffmap_type = config["map_processing"]["diffmap_type"]
     if config["prescribe_xtr"]:
-        folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr_{config['prescribe_xtr']}/"
+        folder_specific = f"{general_config['name_machine']}_{diffmap_type}_xtr_{config['prescribe_xtr']}/"
+        folder = f"./tmp/{folder_specific}"
+        plot_folder = f"./plots/{folder_specific}"
     else:
-        folder = f"./tmp/{general_config['name_machine']}_{diffmap_type}_xtr/"
+        folder_specific = f"{general_config['name_machine']}_{diffmap_type}_xtr/"
+        folder = f"./tmp/{folder_specific}"
+        plot_folder = f"./plots/{folder_specific}"
+    
     os.makedirs(folder, exist_ok=True)
+    os.makedirs(plot_folder, exist_ok=True)
+
     parameters = dict()
     parameters["name_machine"] = (
         general_config["name_machine"] + f"_{diffmap_type}_{config['prescribe_xtr']}"
     )
     parameters["name_human"] = general_config["name_human"]
     parameters["folder"] = folder
+    parameters["plot_folder"] = plot_folder
     parameters["xtr_prefix"] = general_config["name_machine"] + f"_{diffmap_type}"
     parameters["diffmap_prefix"] = (
         general_config["name_machine"] + f"_{diffmap_type}_diff.mtz"
@@ -56,7 +64,7 @@ def make_folder_name(config):
             "triggered_model": config["input_files"]["pdb_triggered"],
         }
     )
-    output_pdb = parameters["folder"] + "combined_weighted.pdb"
+    output_pdb = parameters["plot_folder"] + "combined_weighted.pdb"
     parameters["combined_model"] = output_pdb
     parameters["number_iterations_refinement"] = 6
     return parameters
@@ -71,7 +79,7 @@ def extrapolation(config, parameters):
             diffmap, map_dark, inclusion_mask, config
         )
         img_name = f'{config["general"]["name_machine"]}_{config["map_processing"]["diffmap_type"]}_xtr{prediction_tuple[0]:.2f}.png'
-        folders = [config["general"]["output_folder"], parameters["folder"]]
+        folders = [config["general"]["plot_folder"], parameters["plot_folder"]]
         for folder in folders:
             filename = os.path.join(folder, img_name)
             print(f"Saving extrapolation estimate plot to {filename}...")
@@ -235,7 +243,7 @@ def evaluate_models(results_xtr, results_model, parameters):
     plt.legend()
     fig.savefig(
         os.path.join(
-            parameters["folder"],
+            parameters["plot_folder"],
             f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png",
         )
     )
@@ -284,7 +292,7 @@ def evaluate_models_double(
     plt.legend()
     fig.savefig(
         os.path.join(
-            parameters["folder"],
+            parameters["plot_folder"],
             f"{parameters['xtr_prefix']}_rwork_rfree_comparison_double.png",
         )
     )
