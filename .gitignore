@@ -1,12 +1,14 @@
 .DS_STORE
+.coverage
+__pycache__/
+xtr_estimator.egg-info/
+
+# xtr_estimator/*pyc
+examples/scripts/tmp/*
+examples/notebooks/tmp/*
+
+
 examples/data/photolyase/
 !examples/data/photolyase/1_superdark/
 !examples/data/photolyase/7_30ns/
 !examples/data/photolyase/6_10ns/
-examples/autoshifted_map.mtz
-xtr_estimator/outputs
-# xtr_estimator/*pyc
-__pycache__/
-xtr_estimator.egg-info/
-examples/scripts/tmp/*
-examples/notebooks/tmp/*

@@ -10,6 +10,44 @@ from .logger import setup_logger
 
 logger = setup_logger()
 
+###############################################################################
+# masking.py
+# Exposed functions:
+# - make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict) -> np.ndarray
+# - support_from_masker(pdb_file: str | Path | gemmi.Structure, grid_shape: tuple, radii_set: gemmi.Atomic
+
+
+
+def _format_exclusion_overview_table(rows: list[dict], base_count: int) -> str:
+    """Build a compact ASCII table for mask exclusion statistics."""
+    headers = ["Step", "Control option", "Excluded voxels", "% of base"]
+
+    formatted_rows = []
+    for row in rows:
+        excluded = int(row["excluded"])
+        percent = (excluded / base_count * 100.0) if base_count else 0.0
+        formatted_rows.append(
+            [
+                str(row["name"]),
+                str(row["option"]),
+                f"{excluded}",
+                f"{percent:.2f}%",
+            ]
+        )
+
+    widths = [len(h) for h in headers]
+    for row in formatted_rows:
+        for i, value in enumerate(row):
+            widths[i] = max(widths[i], len(value))
+
+    def _line(values: list[str]) -> str:
+        return "| " + " | ".join(v.ljust(widths[i]) for i, v in enumerate(values)) + " |"
+
+    separator = "|-" + "-|-".join("-" * w for w in widths) + "-|"
+    lines = [_line(headers), separator]
+    lines.extend(_line(row) for row in formatted_rows)
+    return "\n".join(lines)
+
 
 def support_from_masker(
     pdb_file: str | Path | gemmi.Structure,
@@ -265,10 +303,21 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
     mask_np = minimum_blob_size(
         all_neg_blobs, parameters["min_blob_size"], diffmap.cell  # type: ignore
     )
+    base_mask_voxels = int(np.sum(mask_np))
+    exclusion_rows: list[dict] = []
 
+    before_blocking = int(np.sum(mask_np))
     mask_np = positive_density_blocking(diffmap, mask_np, config)
+    exclusion_rows.append(
+        {
+            "name": "Positive density neighborhood blocking",
+            "option": "blocking_radius, blocking_percentile",
+            "excluded": before_blocking - int(np.sum(mask_np)),
+        }
+    )
 
     if parameters["exclude_solvent"]:
+        before_solvent = int(np.sum(mask_np))
         only_solvent = support_from_masker(
             pdbloc_dark, mask_np.shape, gemmi.AtomicRadiiSet.Cctbx
         )
@@ -278,19 +327,30 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
         log_text += " (deactivate via 'exclude_solvent' parameter)"
         logger.info(log_text)
         mask_np = np.logical_and.reduce([mask_np, solvent_mask])
+        exclusion_rows.append(
+            {
+                "name": "Solvent exclusion",
+                "option": "exclude_solvent",
+                "excluded": before_solvent - int(np.sum(mask_np)),
+            }
+        )
 
     else:
         log_text = "Solvent blocking deactivated."
         log_text += " (activate via 'exclude_solvent' parameter)"
         logger.info(log_text)
+        exclusion_rows.append(
+            {
+                "name": "Solvent exclusion",
+                "option": "exclude_solvent",
+                "excluded": 0,
+            }
+        )
 
     if dark_size_std_threshold:
         mask_total_before = np.sum(mask_np)
         map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
-        map_dark_threshold = (
-            map_dark_np.mean() + dark_size_std_threshold * map_dark_np.std()
-        )
-        mask_np = np.logical_and(mask_np, map_dark_np > map_dark_threshold)
+        mask_np = np.logical_and(mask_np, map_dark_np > dark_size_std_threshold)
         number_negative_darks = mask_total_before - np.sum(mask_np)
         log_text = ""
         log_text += f"Excluding an addtional {number_negative_darks} voxels from mask "
@@ -298,6 +358,13 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
         log_text += "* sigma (deactivate via 'exclude_negative_dark' parameter)"
         if number_negative_darks:
             logger.warning(log_text)
+        exclusion_rows.append(
+            {
+                "name": "Dark-map threshold filter",
+                "option": "dark_size_threshold",
+                "excluded": int(number_negative_darks),
+            }
+        )
     else:
         mask_total_before = np.sum(mask_np)
         map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
@@ -312,13 +379,36 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
         log_text += " (deactivate via 'exclude_negative_dark' parameter)"
         if number_negative_darks:
             logger.warning(log_text)
+        exclusion_rows.append(
+            {
+                "name": "Dark-map threshold filter",
+                "option": "dark_size_threshold",
+                "excluded": int(number_negative_darks),
+            }
+        )
 
     if parameters["exclude_positive_diffmap"]:
+        before_positive = int(np.sum(mask_np))
         log_text = ""
         log_text += "Excluding voxels with positive difference density from mask"
         log_text += " (activate via 'exclude_positive_diffmap' parameter)"
         logger.warning(log_text)
         mask_np = np.logical_and(mask_np, diffmap_np < 0)
+        exclusion_rows.append(
+            {
+                "name": "Positive diffmap exclusion",
+                "option": "exclude_positive_diffmap",
+                "excluded": before_positive - int(np.sum(mask_np)),
+            }
+        )
+    else:
+        exclusion_rows.append(
+            {
+                "name": "Positive diffmap exclusion",
+                "option": "exclude_positive_diffmap",
+                "excluded": 0,
+            }
+        )
 
     if parameters["exclude_large_occupancy_outliers"]:
         map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
@@ -332,5 +422,33 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
         log_text += f" most negative voxel excluded: {-diffmap_np[~outliers].min():.3f}"
         log_text += " (activate via 'exclude_large_occupancy_outliers' parameter)"
         logger.warning(log_text)
+        exclusion_rows.append(
+            {
+                "name": "Large occupancy outlier exclusion",
+                "option": "exclude_large_occupancy_outliers",
+                "excluded": int(mask_np_before - np.sum(mask_np)),
+            }
+        )
+    else:
+        exclusion_rows.append(
+            {
+                "name": "Large occupancy outlier exclusion",
+                "option": "exclude_large_occupancy_outliers",
+                "excluded": 0,
+            }
+        )
+
+    final_voxels = int(np.sum(mask_np))
+    total_excluded = base_mask_voxels - final_voxels
+    header = (
+        "Mask exclusion overview "
+        f"(base voxels after min_blob_size: {base_mask_voxels}, \n"
+        f"final included: {final_voxels}, total excluded: {total_excluded}"
+        f"share kept: {final_voxels / base_mask_voxels:.1%}"
+        ")"
+    )
+    table = _format_exclusion_overview_table(exclusion_rows, base_mask_voxels)
+    logger.info("\n" + header + "\n" + table)
+
     # mask_ccp4 =
     return mask_np

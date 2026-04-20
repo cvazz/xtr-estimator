@@ -20,6 +20,10 @@ def load_homepath():
 
 
 class BaseModelDictlike(BaseModel):
+    model_config = SettingsConfigDict(
+        extra="forbid",
+    )
+
     def __getitem__(self, item):
         try:
             return getattr(self, item)
@@ -268,3 +272,24 @@ def dump_config(settings: Settings):
 
     typer.secho(f"💾 Config saved to {dump_loc}", fg=typer.colors.BLUE)
     return config
+
+def merge_dicts(all_settings, test_overrides):
+    for section in test_overrides:
+        if section not in all_settings:
+            all_settings[section] = {}
+        for key in test_overrides[section]:
+            all_settings[section][key] = test_overrides[section][key]
+    for section in all_settings:
+        #get all keys that start with input_
+        # delete them
+        input_keys = [key for key in all_settings[section] if key.startswith("input_")]
+        for key in input_keys:
+            del all_settings[section][key]
+    return all_settings
+
+def merge_settings(base_settings: Settings, extra_settings: Settings | dict) -> Settings:
+    if isinstance(extra_settings, Settings):
+        extra_settings = extra_settings.model_dump()
+    base_dict = base_settings.model_dump()
+    merged_dict = merge_dicts(base_dict, extra_settings)
+    return Settings(**merged_dict)

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from .masking import make_inclusion_mask
 from .processing import get_maps, get_maps_diff, prepare_maps
 from .estimation import plot_extrapolation_estimate
-from .configuration import Settings, dump_config
+from .configuration import Settings, dump_config, merge_dicts
 
 app = typer.Typer(help="XTR Estimator Analysis Pipeline")
 
@@ -47,13 +47,6 @@ def parse_extra_args(extra_args: List[str]) -> dict:
     return overrides
 
 
-def merge_dicts(all_settings, test_overrides):
-    for section in test_overrides:
-        if section not in all_settings:
-            all_settings[section] = {}
-        for key in test_overrides[section]:
-            all_settings[section][key] = test_overrides[section][key]
-    return all_settings
 
 
 def execute_main(config: dict, save2file: bool = False, show: bool = True) -> None:

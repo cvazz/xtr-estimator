@@ -22,6 +22,8 @@ from meteor.scripts.common import (
     kweight_diffmap_according_to_mode,
 )
 
+import warnings
+
 from .masking import support_from_masker
 from .logger import setup_logger
 
@@ -92,10 +94,10 @@ def get_maps_sf(
 
     if high_res_limit:
         logger.info(f"Imposing high_resolution_limit: {high_res_limit}")
-        ds_dark = cut_resolution(ds_dark, high_resolution_limit=high_res_limit)
+        ds_dark = cut_resolution(ds_dark, high_resolution_limit=high_res_limit).copy()
         ds_triggered = cut_resolution(
             ds_triggered, high_resolution_limit=high_res_limit
-        )
+        ).copy()
 
     dark_columns = input_files_dict["input_files"]["columns_dark"]
     triggered_columns = input_files_dict["input_files"]["columns_triggered"]
@@ -147,7 +149,6 @@ def calculate_diffmaps(
         os.path.exists(meta_loc) and not overwrite_solution
     )
 
-    logger.info(f"this is calculate_again {calculate_again}")
     map_set = DiffMapSet(map_dark, map_triggered, map_dark_comp)
     if calculate_again:
         if parameters.get("k_weight", False):
@@ -324,7 +325,8 @@ def autoshift_rsmap_old(
         map_in.phase_column_name: 0,
         map_in.uncertainties_column_name: zero_freq / 10,
     }
-    temp_name = "autoshifted_map.mtz"
+
+    temp_name = general_config["output_folder"] + "autoshifted_map.mtz"
     map_in.write_mtz(temp_name)
     if os.path.exists(temp_name):
         os.remove(temp_name)
@@ -576,7 +578,7 @@ def autoshift_rsmap(
         map_in.phase_column_name: 0,
         map_in.uncertainties_column_name: zero_freq / 10,
     }
-    map_in.write_mtz("autoshifted_map.mtz")
+    # map_in.write_mtz("autoshifted_map.mtz")
     return map_in, zero_freq
 
 
@@ -665,10 +667,12 @@ def prepare_maps(
         map_sampling=config["general"]["map_sampling"],
     )
 
-    map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
-    map_triggered = scale_maps(
-        reference_map=map_dark_comp, map_to_scale=unscaled_triggered
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
+        map_triggered = scale_maps(
+            reference_map=map_dark_comp, map_to_scale=unscaled_triggered
+        )
     diffmap_first = config["map_processing"]["calculate_diffmap_before_f000"]
     dark_mean_correction = config["map_processing"]["dark_mean_correction"]
     if diffmap_first or not dark_mean_correction:
@@ -705,6 +709,7 @@ def prepare_maps(
     else:
         raise ValueError("Invalid configuration for diffmap calculation")
     return diffmap, map_dark, map_triggered
+
 
 def get_map_dark(config, old=False):
     ds_dark = rs.read_mtz(config["input_files"]["map_dark"])

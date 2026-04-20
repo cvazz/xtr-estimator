@@ -8,6 +8,7 @@ class CustomFormatter(logging.Formatter):
     red = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
+    multiline_indent = "  "
     # datefmt = "%Y-%m-%d %H:%M:%S"
     datefmt = "%H:%M:%S"
     format = "%(levelname)s %(asctime)s - %(message)s (%(filename)s:%(lineno)d)"
@@ -30,13 +31,8 @@ class CustomFormatter(logging.Formatter):
         # format = "%(asctime)s: %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
         # datefmt = "%H:%M:%S"
         log_fmt = self.FORMATS.get(record.levelno)
-        # Indent line breaks in the message to align with end of levelname and time
-        levelname_len = len(
-            record.levelname
-        )  # + len(record.asctime) + 3  # levelname + space + time + ' - '
-        # asctime will be formatted as time only (HH:MM:SS)
-        # record.asctime = self.formatTime(record, "%H:%M:%S")
-        indent = " " * (levelname_len + 12 + 12 + 2)  # levelname + space + time + ' - '
+        # Keep multiline records close to the left edge so table-like output is readable.
+        indent = self.multiline_indent
         if record.msg and isinstance(record.msg, str):
             record.msg = record.msg.replace("\n", "\n" + indent)
         formatter = logging.Formatter(log_fmt)
