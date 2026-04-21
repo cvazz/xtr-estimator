@@ -1,4 +1,5 @@
 # xtr-estimator
+# xtr-estimator
 
 xtr-estimator estimates extrapolation factors for time-resolved crystallography maps.
 It supports both dark vs triggered map workflows and dark vs precomputed difference-map workflows.
