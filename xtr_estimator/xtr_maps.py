@@ -243,7 +243,9 @@ def find_rfree_column(ds: rs.DataSet) -> str:
     if not potential_cols:
         raise ValueError(
             "Could not find a suitable R-free column. "
-            "Ensure a column exists with 'R' and 'Free' in the name and is type MTZInt."
+            "Ensure a column exists with 'R' and 'Free' in the name and is type MTZInt. "
+            "Available integer columns: " + ", ".join(int_cols),
+            "All columns available: " + ", ".join(ds.columns)
         )
     
     if len(potential_cols) > 1:

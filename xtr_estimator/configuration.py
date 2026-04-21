@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Optional, Literal, Tuple
 from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
@@ -9,6 +9,7 @@ import typer
 
 logger = setup_logger()
 
+
 def load_homepath():
     # This function returns the path in which t
     current_path = os.getcwd()
@@ -16,7 +17,6 @@ def load_homepath():
     idx = path_parts.index("xtr_estimator")
     homepath = os.sep.join(path_parts[: idx + 1]) + "/"
     return homepath
-
 
 
 class BaseModelDictlike(BaseModel):
@@ -132,7 +132,7 @@ class MapProcessingSettings(BaseModelDictlike):
 
 class PlotSettings(BaseModelDictlike):
     show_ignored_voxels: bool = True
-    set_ylim: bool = False
+    set_ylim: Tuple[float|None, float|None] | None = None
     is_composite: bool = False
     std_cutoff: float = 3.0
     solvent_density: float = 0.4
@@ -150,6 +150,7 @@ class InputFileSettings(BaseModelDictlike):
     map_diff: Optional[str] = None
     pdb_dark: str = Field(..., description="MANDATORY")
     pdb_triggered: Optional[str] = None
+    cif_file: Optional[str] = None
     columns_dark: ColumnConfig = ColumnConfig()
     columns_dark_ints: IntColumnConfig = IntColumnConfig()
     columns_triggered: ColumnConfig = ColumnConfig()
@@ -261,6 +262,7 @@ def config_from_yaml(path: Path | str) -> dict:
     settings = Settings(**final_payload)
     return settings
 
+
 def dump_config(settings: Settings):
     config = settings.model_dump()
     out_dir = Path(settings.general.output_folder)
@@ -273,6 +275,7 @@ def dump_config(settings: Settings):
     typer.secho(f"💾 Config saved to {dump_loc}", fg=typer.colors.BLUE)
     return config
 
+
 def merge_dicts(all_settings, test_overrides):
     for section in test_overrides:
         if section not in all_settings:
@@ -280,14 +283,17 @@ def merge_dicts(all_settings, test_overrides):
         for key in test_overrides[section]:
             all_settings[section][key] = test_overrides[section][key]
     for section in all_settings:
-        #get all keys that start with input_
+        # get all keys that start with input_
         # delete them
         input_keys = [key for key in all_settings[section] if key.startswith("input_")]
         for key in input_keys:
             del all_settings[section][key]
     return all_settings
 
-def merge_settings(base_settings: Settings, extra_settings: Settings | dict) -> Settings:
+
+def merge_settings(
+    base_settings: Settings, extra_settings: Settings | dict
+) -> Settings:
     if isinstance(extra_settings, Settings):
         extra_settings = extra_settings.model_dump()
     elif not extra_settings:

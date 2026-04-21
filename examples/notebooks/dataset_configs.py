@@ -74,8 +74,8 @@ def apply_config_myoglobin_general(idx: str | int) -> dict:
 # --- Helper for rsEGFP2 ---
 
 
-def apply_config_rsEGFP2() -> dict:
-    folderloc = f"{load_homepath()}meteor/test/data/"
+def apply_config_rsEGFP2(add_light=False) -> dict:
+    folderloc = f"{load_homepath()}examples/data/rsEGFP2/"
 
     config = Settings(
         general=GeneralSettings(
@@ -97,9 +97,12 @@ def apply_config_rsEGFP2() -> dict:
                 phase_column="PHIC_chrom",
                 uncertainty_column="SIGF_on",
             ),
+            cif_file=f"{folderloc}8a6g.ligands.cif"
         ),
     )
-    return config.model_dump()
+    if add_light:
+        config.input_files.pdb_triggered = f"{folderloc}8a6r.pdb"
+    return config
 
 
 def apply_config_PL_general(
@@ -234,9 +237,12 @@ def apply_config_B12_general(idx: int, diff=False) -> dict:
         )
     else:
         general.comparison_type = "triggered"
-        input_files.map_triggered = f"{folderloc}{othermap_name}"
-        input_files.columns_triggered = ColumnConfig(
-            amplitude_column="F", phase_column="MODEL", uncertainty_column="SIGF"
+        input_files = InputFileSettings(
+            map_triggered=f"{folderloc}{othermap_name}",
+            columns_triggered=ColumnConfig(
+                amplitude_column="F", phase_column="MODEL", uncertainty_column="SIGF"
+            ),
+            **input_files_preset
         )
     config = Settings(
         general=general,

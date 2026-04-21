@@ -65,7 +65,7 @@ def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None) -> tuple:
         )
     inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
     fig, ax, prediction_tuple = plot_extrapolation_estimate(
-        diffmap, map_dark, inclusion_mask, config
+        diffmap, map_dark, inclusion_mask, config, ax=ax
     )
     return fig, ax, prediction_tuple, map_dark
 

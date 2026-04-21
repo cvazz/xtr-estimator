@@ -1,3 +1,4 @@
+import reciprocalspaceship as rs
 import os
 import shutil
 import subprocess
@@ -6,6 +7,8 @@ from pathlib import Path
 import gemmi
 import numpy as np
 from itertools import combinations
+
+from xtr_estimator.xtr_maps import find_rfree_column
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -40,7 +43,7 @@ def extract_simple_stats(log_path):
 
 
 def run_single_refinement(
-    pdb_file, mtz_file, run_id, output_dir=".", number_iterations=3
+    pdb_file, mtz_file, run_id, output_dir=".", number_iterations=3, add_arguments=[], cif_file=None
 ):
     """
     Refines a single PDB against an MTZ, isolates work in run_id folder,
@@ -56,28 +59,50 @@ def run_single_refinement(
 
     if not (pdb_abs.exists() and mtz_abs.exists()):
         logger.error("Input files missing.")
-        return None, None
+        raise FileNotFoundError(
+            "PDB or MTZ file not found. Inputs were: {pdb_file}, {mtz_file}"
+        )
+    ds_temp = rs.read_mtz(mtz_file)
+    if cif_file is not None:
+        cif_abs = Path(cif_file).resolve()
+        if cif_abs.exists():
+            add_arguments += [cif_file]
+
+    try:
+        find_rfree_column(ds_temp)
+    except ValueError:
+        add_arguments += [
+            "refinement.input.xray_data.r_free_flags.generate=True",
+            "refinement.input.xray_data.r_free_flags.fraction=0.05",
+        ]
 
     # 2. Refinement Command
     # We use the prefix to easily identify output files
     prefix = f"refine_{run_id}"
-    refine_cmd = [
-        "phenix.refine",
-        str(pdb_abs),
-        str(mtz_abs),
-        "strategy=individual_sites+individual_adp",
-        f"main.number_of_macro_cycles={number_iterations}",
-        f"output.prefix={prefix}",
-        "output.serial=1",
-        "--overwrite",
-    ]
+    refine_cmd = (
+        [
+            "phenix.refine",
+            str(pdb_abs),
+            str(mtz_abs),
+        ]
+        + add_arguments
+        + [
+            "strategy=individual_sites+individual_adp",
+            f"main.number_of_macro_cycles={number_iterations}",
+            f"output.prefix={prefix}",
+            "output.serial=1",
+            "--overwrite",
+        ]
+    )
 
     logger.info(f"Running refinement in {sandbox}...")
+    logger.info("Refinement command arguments:\n" + "\n".join(f"  {arg}" for arg in refine_cmd))
     success = run_command(refine_cmd, f"{prefix}.log", cwd=sandbox)
 
     if not success:
         logger.error("Phenix refinement failed.")
-        return None, None, None
+        logger.info(f"Refinement command was: \n{' '.join(refine_cmd)}")
+        raise RuntimeError("Refinement failed.")
 
     # 3. Validation (CC)
     expected_pdb = sandbox / f"{prefix}_001.pdb"

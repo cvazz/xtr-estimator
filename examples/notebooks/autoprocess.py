@@ -22,7 +22,11 @@ from xtr_estimator.refinement import combine_and_weight_structures
 from xtr_estimator.refinement import extract_simple_stats
 from xtr_estimator.xtr_maps import find_rfree_column
 
-from dataset_configs import apply_config_B12_general_light, apply_config_PL_general
+from dataset_configs import (
+    apply_config_B12_general,
+    apply_config_PL_general,
+    apply_config_rsEGFP2,
+)
 from xtr_estimator.xtr_maps import save_to_folder
 
 logger = setup_logger()
@@ -41,7 +45,7 @@ def make_folder_name(config):
         folder_specific = f"{general_config['name_machine']}_{diffmap_type}_xtr/"
         folder = f"./tmp/{folder_specific}"
         plot_folder = f"./plots/{folder_specific}"
-    
+
     os.makedirs(folder, exist_ok=True)
     os.makedirs(plot_folder, exist_ok=True)
 
@@ -82,9 +86,9 @@ def extrapolation(config, parameters):
         folders = [config["general"]["plot_folder"], parameters["plot_folder"]]
         for folder in folders:
             filename = os.path.join(folder, img_name)
-            print(f"Saving extrapolation estimate plot to {filename}...")
+            logger.info(f"Saving extrapolation estimate plot to {filename}...")
             fig.savefig(filename)
-        xtr_prescribe = ({"best_vacuum": 1 / prediction_tuple[0]},)
+        xtr_prescribe = {"best_vacuum": 1 / prediction_tuple[0]}
     else:
         xtr_prescribe = {"prescribe": 1 / config["prescribe_xtr"]}
         prediction_tuple = (config["prescribe_xtr"], None, None)
@@ -93,8 +97,12 @@ def extrapolation(config, parameters):
 
     dataloc_dark = config["input_files"]["map_dark"]
     ds_dark = rs.read_mtz(dataloc_dark)
-    rfree_column = find_rfree_column(ds_dark)
-    rfree = ds_dark[rfree_column]
+    try:
+        rfree_column = find_rfree_column(ds_dark)
+        rfree = ds_dark[rfree_column]
+    except ValueError as e:
+        logger.warning(f"No rfree column found in {dataloc_dark}. Generating R-free flags")
+        rfree = None
     filelocs = save_to_folder(
         diffmap,
         map_dark,
@@ -119,7 +127,7 @@ def extrapolation(config, parameters):
 # new_st.write_pdb(parameters["combined_model"])
 
 
-def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base):
+def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base, add_arguments=[]):
     run_id_comb = f"{run_id_base}_occ{occ_val:.2f}"
 
     base_out = Path(parameters["folder"]).resolve()
@@ -135,22 +143,27 @@ def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base)
                 raise ValueError(f"Stats do not contain r_work or r_free: {stats}")
             stats["occ_val"] = occ_val
 
-            print(f"Already processed run: {run_id_comb}, stats: {stats}")
+            logger.info(f"Already processed run: {run_id_comb}, stats: {stats}")
             return stats
         except Exception as e:
-            print(f"Error processing existing run: {run_id_comb}, error: {e}")
-            print("Re-running refinement for this run_id...")
+            logger.warning(f"Error processing existing run: {run_id_comb}, error: {e}")
+            logger.info("Re-running refinement for this run_id...")
 
     new_st = combine_and_weight_structures(
         structure1, structure2, st1weight=1 - occ_val, threshold=0.3
     )
+
     new_st.write_pdb(output_pdb)
+
+
+
     stats, _, _ = run_single_refinement(
         output_pdb,
         parameters["triggered_map"],
         run_id_comb,
         parameters["folder"],
         number_iterations=parameters["number_iterations_refinement"],
+        add_arguments=add_arguments,
     )
     stats["occ_val"] = occ_val
     return stats
@@ -160,25 +173,29 @@ def comprehensive_xtr_analysis(config):
     parameters = make_folder_name(config)
     base_out = Path(parameters["folder"]).resolve()
     run_id_comb = "vacuum"
-    if "prescribe_xtr" in config:
+    if "prescribe_xtr" in config and config["prescribe_xtr"] is not None:
         occ_val = config["prescribe_xtr"]
         pdb_name = base_out / f"{run_id_comb}_{occ_val:.2f}.pdb"
     else:
         pdb_name = base_out / f"{run_id_comb}_final.pdb"
 
+    add_arguments = []
+    if config['input_files']['cif_file'] is not None:
+        add_arguments += [config['input_files']['cif_file']]
     if not pdb_name.exists():
-        print("pdb name does not exist, running extrapolation and refinement...")
+        logger.info("pdb name does not exist, running extrapolation and refinement...")
         datafile, prediction_tuple = extrapolation(config, parameters)
         parameters["xtr_map"] = datafile
         (parameters, prediction_tuple, datafile)
         if parameters.get("shake_triggered_model", False):
             triggered_model = parameters["triggered_model"][:-4] + "_minimized.pdb"
             if not Path(triggered_model).exists():
-                print(f"Minimizing triggered model and saving to {triggered_model}...")
+                logger.info(f"Minimizing triggered model and saving to {triggered_model}...")
                 cmd = ["phenix.minimize_geometry", parameters["triggered_model"]]
                 log_name = "minimize_geometry+" + triggered_model[:-4] + ".log"
                 run_command(cmd, log_name, parameters["folder"])
             parameters["triggered_model"] = triggered_model
+
 
         stats, mtz_name, pdb_name = run_single_refinement(
             parameters["triggered_model"],
@@ -186,11 +203,20 @@ def comprehensive_xtr_analysis(config):
             run_id_comb,
             parameters["folder"],
             number_iterations=parameters["number_iterations_refinement"],
+            add_arguments=add_arguments
         )
         parameters["xtr_model"] = pdb_name
     else:
-        print("pdb name exists, skipping extrapolation and refinement...")
+        logger.info("pdb name exists, skipping extrapolation and refinement...")
         parameters["xtr_model"] = pdb_name
+
+    if config['input_files']['map_dark'] == config['input_files']['map_triggered']:
+        logger.info("Dark and triggered models are the same, skipping adding amplitude columns to refinement arguments...")
+        cols = config["input_files"]["columns_triggered"]
+        col_str = f'{cols["amplitude_column"]},{cols["uncertainty_column"]}'
+        add_arguments += [
+            f'refinement.input.xray_data.labels="{col_str}"'
+        ]
 
     comb_ref_xtr = partial(
         combine_and_refine,
@@ -198,6 +224,7 @@ def comprehensive_xtr_analysis(config):
         structure2=str(parameters["xtr_model"]),
         run_id_base="combined_model_vs_triggered_amplitudes",
         parameters=parameters,
+        add_arguments=add_arguments
     )
 
     comb_ref_model = partial(
@@ -208,14 +235,22 @@ def comprehensive_xtr_analysis(config):
         parameters=parameters,
     )
     occ_values = np.arange(0.1, 0.9, 0.05)
-    with Pool() as pool:
-        results_xtr = pool.map(comb_ref_xtr, occ_values)
-        results_model = pool.map(comb_ref_model, occ_values)
+    if DEBUG:
+        for occ in occ_values:
+            logger.info(f"Running combine and refine for occ {occ:.2f}...")
+            stats_xtr = comb_ref_xtr(occ)
+            stats_model = comb_ref_model(occ)
+            logger.info(f"Stats for XTR combination at occ {occ:.2f}: {stats_xtr}")
+            logger.info(f"Stats for model combination at occ {occ:.2f}: {stats_model}")
+    else:
+        with Pool() as pool:
+            results_xtr = pool.map(comb_ref_xtr, occ_values)
+            results_model = pool.map(comb_ref_model, occ_values)
     return results_xtr, results_model, parameters
 
 
 def evaluate_models(results_xtr, results_model, parameters):
-    print(parameters)
+    logger.info(parameters)
     # in parameters folder look for all files that contain paramteres["xtr_prefix"] and print
     occus = []
     expected_occu = retrieve_occupancies_from_folder(parameters)
@@ -297,7 +332,24 @@ def evaluate_models_double(
         )
     )
 
-    # comb_ref(occ_val=occ_val)
+
+def retrieve_occupancies_from_folder(parameters):
+    occus = []
+    for file in Path(parameters["folder"]).glob(f"*{parameters['xtr_prefix']}*xtr*"):
+        logger.info(f"File in output folder: {file}")
+        # cut file between last xtr and .mtz and print
+        # if file.suffix == ".mtz":
+
+        if file.suffix != ".png":
+            continue
+        try:
+            real_occu = float(file.stem.split("xtr")[-1])
+        except ValueError:
+            logger.warning(f"Could not convert {file} to float")
+            continue
+        logger.info(f"MTZ file: {file}, real_occu: {real_occu}")
+        occus.append(real_occu)
+    return occus[0] if occus else np.nan
 
 
 def int_or_str(value):
@@ -316,8 +368,9 @@ def parsing():
     parser.add_argument(
         "--type",
         type=str,
-        required=True,
-        choices=["b12", "pl"],  # Automatically enforces valid inputs
+        # required=True,
+        default="rsEGFP2",
+        choices=["b12", "pl", "rsEGFP2"],  # Automatically enforces valid inputs
         help="Type of configuration to apply ('b12' or 'pl').",
     )
 
@@ -359,25 +412,6 @@ def main_single(args, config):
     evaluate_models(results_xtr, results_model, parameters)
 
 
-def retrieve_occupancies_from_folder(parameters):
-    occus = []
-    for file in Path(parameters["folder"]).glob(f"*{parameters['xtr_prefix']}*xtr*"):
-        print(f"File in output folder: {file}")
-        # cut file between last xtr and .mtz and print
-        # if file.suffix == ".mtz":
-
-        if file.suffix != ".png":
-            continue
-        try:
-            real_occu = float(file.stem.split("xtr")[-1])
-        except ValueError:
-            print(f"Could not convert {file} to float")
-            continue
-        print(f"MTZ file: {file}, real_occu: {real_occu}")
-        occus.append(real_occu)
-    return occus[0] if occus else np.nan
-
-
 def main_double(config):
     config_tv = deepcopy(config)
     config_tv["map_processing"]["diffmap_type"] = "tv"
@@ -402,19 +436,21 @@ def main_double(config):
 def main():
     args = parsing()
     if args.type == "b12":
-        config = apply_config_B12_general_light(args.specifier)
+        config = apply_config_B12_general(args.specifier, diff=False)
     elif args.type == "pl":
         config = apply_config_PL_general(args.specifier, add_light=True)
+    elif args.type == "rsEGFP2":
+        config = apply_config_rsEGFP2(add_light=True)
     else:
         raise ValueError(f"Unknown config type: {args.type}")
 
     if args.dmin:
-        print(config.general.high_resolution_limit)
         config.general.high_resolution_limit = args.dmin
 
     config = dict(config)
-    if args.prescribe_xtr is not None:
-        config["prescribe_xtr"] = args.prescribe_xtr
+    config["prescribe_xtr"] = (
+        args.prescribe_xtr if args.prescribe_xtr is not None else None
+    )
 
     if args.diffmap_type in ["tv", "kweighted"]:
         config["map_processing"]["diffmap_type"] = args.diffmap_type
@@ -426,6 +462,6 @@ def main():
 
     main_single(args, config)
 
-
+DEBUG = False
 if __name__ == "__main__":
     main()
