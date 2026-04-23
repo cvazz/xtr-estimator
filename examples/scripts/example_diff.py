@@ -1,6 +1,6 @@
 from xtr_estimator.logger import setup_logger
 from xtr_estimator.main import execute_as_main
-from xtr_estimator.configuration import  Settings, config_from_yaml
+from xtr_estimator.configuration import  MapProcessingSettings, Settings, config_from_yaml
 from xtr_estimator.configuration import GeneralSettings,  InputFileSettings, ColumnConfig, DiffColumnConfig
 
 
@@ -56,9 +56,11 @@ def option1_alt():
         general=GeneralSettings(
             high_resolution_limit=high_resolution_limit,
             name_machine=name_machine
-        )
+        ),
+        map_processing=MapProcessingSettings(diffmap_type="it_tv"),
+        plot = dict(save_to_file=True, show_plot=True)
     )
-    execute_as_main(cfg)
+    execute_as_main(cfg, save2file=True, show=False)
 
 def option3_alt():
     # or use diffmap directly from input for example from Xtrapol8
@@ -96,8 +98,8 @@ def option3_alt():
 
 def main():
     # get_base_config()
-    option1()
     option1_alt()
+    option1()
     option2()
     option3()
     option3_alt()

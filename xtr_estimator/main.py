@@ -51,7 +51,7 @@ def parse_extra_args(extra_args: List[str]) -> dict:
 
 
 
-def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None) -> tuple:
+def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None, prescribe_mask=None) -> tuple:
     if config["general"]["comparison_type"] == "diff":
         map_dark, diffmap = get_maps_diff(config, map_dark=map_dark_base)
     elif config["general"]["comparison_type"] == "triggered":
@@ -59,11 +59,16 @@ def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None) -> tuple:
             logger.warning("map_dark_base provided but will be ignored in triggered mode.")
         unscaled_dark, unscaled_triggered = get_maps(config)
         diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
+        print("diffmap index:", diffmap.index)
     else:
         raise ValueError(
             f"Unknown comparison type: {config['general']['comparison_type']}"
         )
-    inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
+    if prescribe_mask is None:
+        inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
+    else:
+        inclusion_mask = prescribe_mask
+
     fig, ax, prediction_tuple = plot_extrapolation_estimate(
         diffmap, map_dark, inclusion_mask, config, ax=ax
     )
@@ -72,13 +77,13 @@ def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None) -> tuple:
 def execute_as_main(config: Settings | dict, save2file: bool = False, show: bool = True) -> None:
     """The actual processing logic."""
     # Ensure we have regular dict
-    fig, _, prediction_tuple = xtr_logic(config, ax=None)
+    fig, _, prediction_tuple, _ = xtr_logic(config, ax=None)
     filename = f"{config['general']['name_machine']}_extrapolation_estimate.png"
     full_filename = Path(config["general"]["plot_folder"]) / filename
 
-    if config["plot"]["save_to_file"]:
+    if config["plot"]["save_to_file"] or save2file:
         fig.savefig(full_filename)
-    if config["plot"]["show_plot"]:
+    if config["plot"]["show_plot"] or show:
         plt.show()
     else:
         plt.close(fig)
