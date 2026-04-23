@@ -70,7 +70,7 @@ def make_folder_name(config):
     )
     output_pdb = parameters["plot_folder"] + "combined_weighted.pdb"
     parameters["combined_model"] = output_pdb
-    parameters["number_iterations_refinement"] = 6
+    parameters["number_iterations_refinement"] = 10
     return parameters
 
 
@@ -100,7 +100,7 @@ def extrapolation(config, parameters):
     try:
         rfree_column = find_rfree_column(ds_dark)
         rfree = ds_dark[rfree_column]
-    except ValueError as e:
+    except ValueError:
         logger.warning(f"No rfree column found in {dataloc_dark}. Generating R-free flags")
         rfree = None
     filelocs = save_to_folder(
@@ -114,17 +114,6 @@ def extrapolation(config, parameters):
     return filelocs[0], prediction_tuple
 
 
-# def refine_xtr(parameters, prediction_tuple, datafile):
-
-
-# parameters["xtr_model"] = pdb_name
-# new_st = combine_and_weight_structures(
-#     parameters["files"]["dark_model"],
-#     parameters["files"]["combined_model"],
-#     st1weight=1 - xtr_estimate,
-#     threshold=0.3,
-# )
-# new_st.write_pdb(parameters["combined_model"])
 
 
 def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base, add_arguments=[]):
@@ -133,6 +122,9 @@ def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base,
     base_out = Path(parameters["folder"]).resolve()
     folderloc = base_out / str(run_id_comb)
     output_pdb = parameters["folder"] + f"combined_occ{occ_val:.2f}.pdb"
+    text = f"\n\nRunning combine and refine for occupancy {occ_val:.2f} with run_id {run_id_comb}..."
+    text += f"\nStructure 1: {structure1}, Structure 2: {structure2}\n"
+    logger.info(text)
 
     if folderloc.exists():
         try:
@@ -233,6 +225,26 @@ def comprehensive_xtr_analysis(config):
         structure2=str(parameters["triggered_model"]),
         run_id_base="author_model_vs_triggered_amplitudes",
         parameters=parameters,
+        add_arguments=add_arguments
+    )
+    parameters_0it = deepcopy(parameters)
+    parameters_0it["number_iterations_refinement"] = 0
+    comb_ref_xtr_0it = partial(
+        combine_and_refine,
+        structure1=parameters["dark_model"],
+        structure2=str(parameters["xtr_model"]),
+        run_id_base="combined_model_vs_triggered_amplitudes_0it",
+        parameters=parameters_0it,
+        add_arguments=add_arguments
+    )
+
+    comb_ref_model_0it = partial(
+        combine_and_refine,
+        structure1=parameters["dark_model"],
+        structure2=str(parameters["triggered_model"]),
+        run_id_base="author_model_vs_triggered_amplitudes_0it",
+        parameters=parameters_0it,
+        add_arguments=add_arguments
     )
     occ_values = np.arange(0.1, 0.9, 0.05)
     if DEBUG:
@@ -246,7 +258,12 @@ def comprehensive_xtr_analysis(config):
         with Pool() as pool:
             results_xtr = pool.map(comb_ref_xtr, occ_values)
             results_model = pool.map(comb_ref_model, occ_values)
-    return results_xtr, results_model, parameters
+            results_xtr_0it = pool.map(comb_ref_xtr_0it, occ_values)
+            results_model_0it = pool.map(comb_ref_model_0it , occ_values)
+    outcome_tuple = (results_xtr, results_model, parameters)
+    outcome_tuple_0it = (results_xtr_0it, results_model_0it, parameters)
+    outcome_list = [outcome_tuple, outcome_tuple_0it]
+    return outcome_list
 
 
 def evaluate_models(results_xtr, results_model, parameters):
@@ -266,16 +283,22 @@ def evaluate_models(results_xtr, results_model, parameters):
         plt.axvline(
             x=expected_occu, color="green", linestyle="--", label="Best Vacuum Estimate"
         )
-    plt.plot(occ_vals_xtr, r_work_xtr, label="XTR R-work", marker="o", color="blue")
+    rwork = "R-work: "
+    rfree = "R-free: "
+    xtr = r"$\alpha$ Xtr-triggered + $(1-\alpha)$ reference"
+    author = r"$\alpha$ author-triggered + $(1-\alpha)$ reference"
+    plt.plot(occ_vals_xtr, r_work_xtr, label=rwork+xtr, marker="o", color="blue")
     plt.plot(
-        occ_vals_model, r_work_model, label="Model R-work", marker="s", color="red"
+        occ_vals_model, r_work_model, label=rwork+author, marker="s", color="red"
     )
-    plt.plot(occ_vals_xtr, r_free_xtr, label="XTR R-free", marker="o", color="cyan")
+    plt.plot(occ_vals_xtr, r_free_xtr, label=rfree+xtr, marker="o", color="cyan")
     plt.plot(
-        occ_vals_model, r_free_model, label="Model R-free", marker="s", color="magenta"
+        occ_vals_model, r_free_model, label=rfree+author, marker="s", color="magenta"
     )
     # plt.axvline(x=parameters["best_vacuum"], color="green", linestyle="--", label="Best Vacuum Estimate")
-    plt.legend()
+    plt.legend(title="Refinement of triggered structure amplitudes\n with model composed of:")
+    plt.xlabel(r"Occupancy $\alpha$ of Extrapolated State")
+    plt.ylabel("R-value")
     fig.savefig(
         os.path.join(
             parameters["plot_folder"],
@@ -406,10 +429,13 @@ def parsing():
     return parser.parse_args()
 
 
-def main_single(args, config):
+def main_single(config):
 
-    results_xtr, results_model, parameters = comprehensive_xtr_analysis(config)
+    outcome_list = comprehensive_xtr_analysis(config)
+    results_xtr, results_model, parameters = outcome_list[0]
     evaluate_models(results_xtr, results_model, parameters)
+    results_xtr_0it, results_model_0it, parameters_0it = outcome_list[1]
+    evaluate_models(results_xtr_0it, results_model_0it, parameters_0it)
 
 
 def main_double(config):
@@ -460,7 +486,7 @@ def main():
     elif args.diffmap_type is not None:
         raise ValueError(f"Unknown diffmap type: {args.diffmap_type}")
 
-    main_single(args, config)
+    main_single(config)
 
 DEBUG = False
 if __name__ == "__main__":
