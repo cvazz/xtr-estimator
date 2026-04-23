@@ -162,6 +162,22 @@ def apply_config_PL_general(
     )
     return config
 
+def load_all_PL_configs(diff):
+    ii = 0 
+    configs = []
+    while True:
+        try:    
+            config = apply_config_PL_general(ii, diff=diff)
+        except ValueError:
+            break
+
+        if config is None:
+            print(f"Config {ii} is None, stopping.")
+
+            break
+        configs.append(config)
+        ii += 1
+    return configs
 
 # --- Helper for B12 (Difference Map Path) ---
 def get_b12_diffmap_paths(folderloc: str, idx: int | str):
@@ -219,7 +235,7 @@ def apply_config_B12_general(idx: int, diff=False) -> dict:
     input_files_preset = dict(
         map_dark=f"{folderloc}9S06_dark.mtz",
         pdb_dark=f"{folderloc}9S06.pdb",
-        pdb_triggered=f"{folderloc}{b12_pdb}" if b12_pdb else None,
+        pdb_triggered=f"{folderloc}{b12_pdb}.pdb" if b12_pdb else None,
         columns_dark=ColumnConfig(
             amplitude_column="FP", phase_column="MODEL", uncertainty_column="SIGFP"
         ),

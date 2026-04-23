@@ -103,7 +103,7 @@ def save_extrapolated_map(
         rfree_column = find_rfree_column(ds_temp)
         logger.info(f"Identified R-free column: {rfree_column}")
     except ValueError as e:
-        logger.error(f"Error identifying R-free column: {e}")
+        logger.warning(f"Error identifying R-free column: {e}")
         rfree_column = "Rfree_flag"
         
     if rfree_flags is not None:

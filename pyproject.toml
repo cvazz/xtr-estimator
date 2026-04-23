@@ -18,21 +18,13 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "meteor-maps >= 0.4.1",
+    "meteor-maps >= 0.4.2",
     "matplotlib >= 3.9.0",
     "jupyterlab >= 4.4.0",
     "pyqt6 >= 6.5.0",
     "pydantic-settings",
     "typer",
 ]
-
-[project.scripts]
-'xtr_estimator.plot_xtr' = "xtr_estimator.main:main"
-
-[tool.setuptools]
-# This tells setuptools that the "xtr_estimator" package is 
-# located in the current directory (.)
-packages = ["xtr_estimator"]
 
 [project.optional-dependencies]
 tests = [
@@ -41,3 +33,16 @@ tests = [
     "pytest-xdist",
     "nbmake",
 ]
+interactive = [
+    "ipympl",
+]
+
+[project.scripts]
+'xtr_estimator.plot_xtr' = "xtr_estimator.main:main"
+
+[tool.setuptools]
+packages = ["xtr_estimator"]
+
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["E402", "E401", "F401", "F841"]
