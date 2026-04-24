@@ -359,7 +359,7 @@ def get_meta_loc(general_config):
 def get_meta_loc_diffmap(general_config, processing_config):
     binary_string = processing_dict_2_binary(processing_config)
     evaluation_path_basis, name = get_meta_loc(general_config)
-    name = f"diffmap_config_{general_config['high_resolution_limit']*10}_{binary_string}.pkl"
+    name = f"diffmap_config_{general_config['high_resolution_limit']*10:.0f}_{binary_string}.pkl"
     meta_loc = evaluation_path_basis + name
     return meta_loc
 
