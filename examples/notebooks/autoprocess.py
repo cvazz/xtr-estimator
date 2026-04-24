@@ -2,6 +2,7 @@ import argparse
 from copy import deepcopy
 from functools import partial
 from multiprocessing import Pool
+import multiprocessing
 import os
 from pathlib import Path
 import numpy as np
@@ -21,13 +22,13 @@ from xtr_estimator.refinement import run_command, run_single_refinement
 from xtr_estimator.refinement import combine_and_weight_structures
 from xtr_estimator.refinement import extract_simple_stats
 from xtr_estimator.xtr_maps import find_rfree_column
+from xtr_estimator.xtr_maps import save_to_folder
 
 from dataset_configs import (
     apply_config_B12_general,
     apply_config_PL_general,
     apply_config_rsEGFP2,
 )
-from xtr_estimator.xtr_maps import save_to_folder
 
 logger = setup_logger()
 
@@ -37,12 +38,16 @@ def make_folder_name(config):
         raise ValueError("Triggered PDB must be provided in config for auto processing")
     general_config = config["general"]
     diffmap_type = config["map_processing"]["diffmap_type"]
-    if config["prescribe_xtr"]:
+    if config.get("prescribe_xtr", None) is not None:
+        print(config.get("prescribe_xtr", 1))
         folder_specific = f"{general_config['name_machine']}_{diffmap_type}_xtr_{config['prescribe_xtr']}/"
+        name_machine = general_config["name_machine"] + f"_{diffmap_type}_{config['prescribe_xtr']}"
         folder = f"./tmp/{folder_specific}"
         plot_folder = f"./plots/{folder_specific}"
     else:
+        print(config.get("prescribe_xtr", 2))
         folder_specific = f"{general_config['name_machine']}_{diffmap_type}_xtr/"
+        name_machine = general_config["name_machine"] + f"_{diffmap_type}"
         folder = f"./tmp/{folder_specific}"
         plot_folder = f"./plots/{folder_specific}"
 
@@ -50,13 +55,12 @@ def make_folder_name(config):
     os.makedirs(plot_folder, exist_ok=True)
 
     parameters = dict()
-    parameters["name_machine"] = (
-        general_config["name_machine"] + f"_{diffmap_type}_{config['prescribe_xtr']}"
-    )
+    parameters["name_machine"] =  name_machine
     parameters["name_human"] = general_config["name_human"]
     parameters["folder"] = folder
     parameters["plot_folder"] = plot_folder
     parameters["xtr_prefix"] = general_config["name_machine"] + f"_{diffmap_type}"
+    parameters["shake_triggered_model"] = True
     parameters["diffmap_prefix"] = (
         general_config["name_machine"] + f"_{diffmap_type}_diff.mtz"
     )
@@ -70,14 +74,14 @@ def make_folder_name(config):
     )
     output_pdb = parameters["plot_folder"] + "combined_weighted.pdb"
     parameters["combined_model"] = output_pdb
-    parameters["number_iterations_refinement"] = 10
+    parameters["number_iterations_refinement"] = 5
     return parameters
 
 
 def extrapolation(config, parameters):
     unscaled_dark, unscaled_triggered = get_maps(config)
     diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
-    if config.get("prescribe_xtr", None) is None:
+    if config.get("prescribe_xtr", None) is None :
         inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
         fig, ax, prediction_tuple = plot_extrapolation_estimate(
             diffmap, map_dark, inclusion_mask, config
@@ -178,15 +182,17 @@ def comprehensive_xtr_analysis(config):
         logger.info("pdb name does not exist, running extrapolation and refinement...")
         datafile, prediction_tuple = extrapolation(config, parameters)
         parameters["xtr_map"] = datafile
-        (parameters, prediction_tuple, datafile)
+        # (parameters, prediction_tuple, datafile)
         if parameters.get("shake_triggered_model", False):
-            triggered_model = parameters["triggered_model"][:-4] + "_minimized.pdb"
-            if not Path(triggered_model).exists():
-                logger.info(f"Minimizing triggered model and saving to {triggered_model}...")
-                cmd = ["phenix.minimize_geometry", parameters["triggered_model"]]
-                log_name = "minimize_geometry+" + triggered_model[:-4] + ".log"
+            # get only file name not directory 
+            triggered_model = str(Path(parameters["triggered_model"]).name)[:-4] + "_minimized.pdb"
+            triggered_model_path = Path(parameters["folder"]) / triggered_model
+            if not triggered_model_path.exists():
+                logger.info(f"Minimizing triggered model and saving to {triggered_model} in folder {parameters['folder']}...")
+                cmd = ["phenix.geometry_minimization", parameters["triggered_model"]]
+                log_name = "minimize_geometry" + triggered_model[:-4] + ".log"
                 run_command(cmd, log_name, parameters["folder"])
-            parameters["triggered_model"] = triggered_model
+            parameters["triggered_model"] = triggered_model_path
 
 
         stats, mtz_name, pdb_name = run_single_refinement(
@@ -266,7 +272,7 @@ def comprehensive_xtr_analysis(config):
     return outcome_list
 
 
-def evaluate_models(results_xtr, results_model, parameters):
+def evaluate_models(results_xtr, results_model, parameters, name_suffix=""):
     logger.info(parameters)
     # in parameters folder look for all files that contain paramteres["xtr_prefix"] and print
     occus = []
@@ -302,7 +308,7 @@ def evaluate_models(results_xtr, results_model, parameters):
     fig.savefig(
         os.path.join(
             parameters["plot_folder"],
-            f"{parameters['xtr_prefix']}_rwork_rfree_comparison.png",
+            f"{parameters['xtr_prefix']}_rwork_rfree_comparison{name_suffix}.png",
         )
     )
 
@@ -393,7 +399,7 @@ def parsing():
         type=str,
         # required=True,
         default="rsEGFP2",
-        choices=["b12", "pl", "rsEGFP2"],  # Automatically enforces valid inputs
+        # choices=["b12", "pl", "rsEGFP2"],  # Automatically enforces valid inputs
         help="Type of configuration to apply ('b12' or 'pl').",
     )
 
@@ -435,7 +441,7 @@ def main_single(config):
     results_xtr, results_model, parameters = outcome_list[0]
     evaluate_models(results_xtr, results_model, parameters)
     results_xtr_0it, results_model_0it, parameters_0it = outcome_list[1]
-    evaluate_models(results_xtr_0it, results_model_0it, parameters_0it)
+    evaluate_models(results_xtr_0it, results_model_0it, parameters_0it, name_suffix="_0it")
 
 
 def main_double(config):
@@ -458,6 +464,27 @@ def main_double(config):
         exp_occus=expected_occus,
     )
 
+def b12_vary(specifier):
+
+    config = apply_config_B12_general(0, diff=False)
+    energy_levels = [12, 30, 60, 120]
+
+    # extract folder from path
+    input_folder = Path(config.input_files.map_dark).parent
+    configs = []
+    # for energy in energy_levels:
+    energy = energy_levels[specifier]
+    new_config = deepcopy(config)
+    # path to string
+    new_config.input_files.map_triggered = str(input_folder / f"3us_{energy}mJ.cm-2_light_FPFree.mtz")
+    new_config.input_files.pdb_triggered = str(input_folder / "9S0D.pdb")
+    new_config.general.name_machine = f"B12_{energy}mJ"
+    new_config = new_config.model_dump()  # convert to dict for multiprocessing
+
+        # configs.append(new_config)
+    return new_config
+
+
 
 def main():
     args = parsing()
@@ -467,6 +494,8 @@ def main():
         config = apply_config_PL_general(args.specifier, add_light=True)
     elif args.type == "rsEGFP2":
         config = apply_config_rsEGFP2(add_light=True)
+    elif args.type == "vary_energy_b12":
+        config =b12_vary(args.specifier)
     else:
         raise ValueError(f"Unknown config type: {args.type}")
 

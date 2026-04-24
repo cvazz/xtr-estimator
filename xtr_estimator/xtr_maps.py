@@ -50,20 +50,21 @@ def adding_maps(
 
 
 def save_extrapolated_map(
-    info_container,
-    xtr_factor,
-    map_dark,
-    diffmap,
-    folder,
-    name_prefix="",
-    file_loc_diff="",
+    xtr_factor: float,
+    map_dark: rsmap.Map,
+    diffmap: rsmap.Map,
+    dark_map_file_loc: Path | str,
+    folder: Path | str,
+    name_prefix: str = "",
+    file_loc_diff: str = "",
     rfree_flags=None,
 ):
     if not diffmap.has_uncertainties:
         diffmap.set_uncertainties(diffmap.amplitudes.abs() * 0.1, "Estimated_sigmaF")
     xtr_map = adding_maps(map_dark, diffmap, factor2=xtr_factor)
     logger.info(f"Columns of xtr: {xtr_map.columns}")
-    file_loc = str(folder / (name_prefix + f"_xtr{xtr_factor:.2f}.mtz"))
+    folder = Path(folder)
+    file_loc = str((folder) / (name_prefix + f"_xtr{xtr_factor:.2f}.mtz"))
 
     # file_loc_dark_again = folder / (name_prefix + "_dark_again.mtz")
     # file_loc = str(folder / (name_prefix + f"_xtr{xtr_factor:.2f}_straight.mtz"))
@@ -73,7 +74,7 @@ def save_extrapolated_map(
     # xtr_map.write_mtz(file_loc)
     # map_dark.write_mtz(file_loc_dark_again)
     logger.info(f"Saving xtr map: {xtr_factor:.2f}, to {file_loc}")
-    ds_temp = rs.read_mtz(info_container["map_dark"])
+    ds_temp = rs.read_mtz(dark_map_file_loc)
     if not diffmap.has_uncertainties:
         logger.warning("Diffmap has no uncertainties, adding fake uncertainties of 1.0")
         sigf = rs.DataSeries(np.ones(len(diffmap)), dtype=StandardDeviationDtype)
@@ -208,11 +209,11 @@ def save_to_folder(
         prefix = xtr_name + "_" + name_prefix
 
         file_loc = save_extrapolated_map(
-            input_file_config,
             xtr_value,
             map_dark,
             diffmap,
-            folder,
+            dark_map_file_loc=input_file_config["map_dark"],
+            folder=folder,
             name_prefix=prefix,
             file_loc_diff=parameters.get("diffmap_prefix", ""),
             rfree_flags=rfree_flags,
