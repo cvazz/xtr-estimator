@@ -225,6 +225,10 @@ def calculate_diffmaps(
                 tv_denoise_mode=weight_mode,
                 tv_weight=opt_tv,
             )
+            # Only attempt to save the meta file if we actually ran an optimization
+            if weight_mode == WeightMode.optimize and meta_loc != "":
+                with open(meta_loc, "wb") as f:
+                    pickle.dump(meta, f)
         else:  # it_tv
             tv_weights_to_scan = (
                 [opt_tv * 1e-1, opt_tv, opt_tv * 10] if opt_tv is not None else None
@@ -253,10 +257,6 @@ def calculate_diffmaps(
                 "it_tv mode does not currently support parameter loading/saving; running with default parameters."
             )
 
-        # Only attempt to save the meta file if we actually ran an optimization
-        if weight_mode == WeightMode.optimize and meta_loc != "":
-            with open(meta_loc, "wb") as f:
-                pickle.dump(meta, f)
 
         return diffmap
 

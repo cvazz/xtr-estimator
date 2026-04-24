@@ -478,7 +478,9 @@ def main():
         args.prescribe_xtr if args.prescribe_xtr is not None else None
     )
 
-    if args.diffmap_type in ["tv", "kweighted"]:
+    # match allowed in MapProcessingSettings.diffmap_type
+
+    if args.diffmap_type in ["tv", "kweighted", "it_tv"]:
         config["map_processing"]["diffmap_type"] = args.diffmap_type
     elif args.diffmap_type in ["both"]:
         main_double(config)
