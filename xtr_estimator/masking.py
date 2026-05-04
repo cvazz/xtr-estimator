@@ -7,6 +7,7 @@ from scipy.ndimage import convolve
 
 from meteor import rsmap
 from .logger import setup_logger
+from .configuration import Settings, MaskingSettings
 
 logger = setup_logger()
 
@@ -212,12 +213,12 @@ def minimum_blob_size(
     return mask_np
 
 
-def positive_density_blocking(diffmap: rsmap.Map, mask_np: np.ndarray, config: dict):
+def positive_density_blocking(
+    diffmap: rsmap.Map, mask_np: np.ndarray, masking_config: dict, map_sampling: int
+) -> np.ndarray:
 
-    map_sampling = config["general"]["map_sampling"]
-    parameters = config["masking"]
-    blocking_percentile = parameters["blocking_percentile"]
-    blocking_radius = parameters["blocking_radius"]
+    blocking_percentile = masking_config["blocking_percentile"]
+    blocking_radius = masking_config["blocking_radius"]
 
     ccp4diff = diffmap.to_ccp4_map(map_sampling=map_sampling)
     neighborhood_kernel = radius_mask_minibox_from_ccp4(
@@ -240,14 +241,14 @@ def positive_density_blocking(diffmap: rsmap.Map, mask_np: np.ndarray, config: d
     excluded_share = np.sum(excluded) / np.sum(mask_np)
 
     log_text = f"Excluding {np.sum(excluded)} ({excluded_share:.2%}) voxels from mask"
-    log_text += f" due to positive density within {parameters['blocking_radius']} A and above the {parameters['blocking_percentile']} percentile"
+    log_text += f" due to positive density within {masking_config['blocking_radius']} A and above the {masking_config['blocking_percentile']} percentile"
     log_text += " (control via 'blocking_radius' and 'blocking_percentile' parameters)"
     logger.debug(log_text)
     mask_np = np.logical_and(mask_np, ~pos_mask)
     return mask_np
 
 
-def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
+def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: Settings | dict):
     """_summary_
 
     Parameters
@@ -288,26 +289,47 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
     ValueError
         _description_
     """
-    parameters = config["masking"]
-    map_sampling = config["general"]["map_sampling"]
-    pdbloc_dark = config["input_files"]["pdb_dark"]
-    dark_size_std_threshold = parameters["dark_size_threshold"]
+    return make_inclusion_mask_real(
+        diffmap,
+        map_dark,
+        map_sampling=config["general"]["map_sampling"],
+        masking_config=config["masking"],
+        pdbloc_dark=config["input_files"]["pdb_dark"],
+    )
+
+
+def make_inclusion_mask_real(
+    diffmap: rsmap.Map,
+    map_dark: rsmap.Map,
+    map_sampling: int,
+    masking_config: MaskingSettings | dict,
+    pdbloc_dark: str | None = None,
+):
+    if isinstance(masking_config, dict):
+        masking_config = MaskingSettings(**masking_config)
+    elif not isinstance(masking_config, MaskingSettings):
+        raise ValueError("masking_config must be either a dict or MaskingSettings instance")
+
+    if pdbloc_dark is None:
+        masking_config["exclude_solvent"] = False
+
+    dark_size_std_threshold = masking_config["dark_size_threshold"]
     diffmap_np = diffmap.to_3d_numpy_map(map_sampling=map_sampling)
 
     ### Find all negative blobs ###
-    sigma = parameters["sigma"]
+    sigma = masking_config["sigma"]
 
     all_neg_blobs = calculate_all_pos_blobs(-diffmap_np, sigma=sigma)
 
     ### Impose minimum blob size ###
     mask_np = minimum_blob_size(
-        all_neg_blobs, parameters["min_blob_size"], diffmap.cell  # type: ignore
+        all_neg_blobs, masking_config["min_blob_size"], diffmap.cell  # type: ignore
     )
     base_mask_voxels = int(np.sum(mask_np))
     exclusion_rows: list[dict] = []
 
     before_blocking = int(np.sum(mask_np))
-    mask_np = positive_density_blocking(diffmap, mask_np, config)
+    mask_np = positive_density_blocking(diffmap, mask_np, masking_config, map_sampling)
     exclusion_rows.append(
         {
             "name": "Positive density neighborhood blocking",
@@ -316,7 +338,7 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
         }
     )
 
-    if parameters["exclude_solvent"]:
+    if masking_config["exclude_solvent"]:
         before_solvent = int(np.sum(mask_np))
         only_solvent = support_from_masker(
             pdbloc_dark, mask_np.shape, gemmi.AtomicRadiiSet.Cctbx
@@ -387,7 +409,7 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
             }
         )
 
-    if parameters["exclude_positive_diffmap"]:
+    if masking_config["exclude_positive_diffmap"]:
         before_positive = int(np.sum(mask_np))
         log_text = ""
         log_text += "Excluding voxels with positive difference density from mask"
@@ -410,15 +432,15 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: dict):
             }
         )
 
-    if parameters["exclude_large_occupancy_outliers"]:
+    if masking_config["exclude_large_occupancy_outliers"]:
         map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
         mask_np_before = np.sum(mask_np)
         outliers = (
             np.where(map_dark_np != 0, -diffmap_np / map_dark_np, 0)
-            < parameters["exclude_large_occupancy_outliers"]
+            < masking_config["exclude_large_occupancy_outliers"]
         )
         mask_np = np.logical_and(mask_np, outliers)
-        log_text = f"Excluding an addtional {mask_np_before - np.sum(mask_np)} voxels from mask due to large occupancy outliers (threshold: {parameters['exclude_large_occupancy_outliers']})"
+        log_text = f"Excluding an addtional {mask_np_before - np.sum(mask_np)} voxels from mask due to large occupancy outliers (threshold: {masking_config['exclude_large_occupancy_outliers']})"
         log_text += f" most negative voxel excluded: {-diffmap_np[~outliers].min():.3f}"
         log_text += " (activate via 'exclude_large_occupancy_outliers' parameter)"
         logger.debug(log_text)

@@ -82,12 +82,26 @@ class MaskingSettings(BaseModelDictlike):
     @classmethod
     def no_mask(cls):
         return cls(
-            sigma=0,
+            sigma=0.1,
             min_blob_size=0.1,
             blocking_radius=1.5,
             blocking_percentile=1e-5,
             exclude_solvent=True,
-            dark_size_threshold=0.1,
+            dark_size_threshold=0.0,
+            exclude_positive_diffmap=True,
+            exclude_large_occupancy_outliers=False,
+        )
+
+
+    @classmethod
+    def simple(cls):
+        return cls(
+            sigma=3.0,
+            min_blob_size=0.1,
+            blocking_radius=0.1,
+            blocking_percentile=0.1,
+            exclude_solvent=True,
+            dark_size_threshold=0.001,
             exclude_positive_diffmap=True,
             exclude_large_occupancy_outliers=False,
         )
@@ -104,20 +118,6 @@ class MaskingSettings(BaseModelDictlike):
             exclude_positive_diffmap=True,
             exclude_large_occupancy_outliers=False,
         )
-
-    @classmethod
-    def simple(cls):
-        return cls(
-            sigma=3.0,
-            min_blob_size=0.1,
-            blocking_radius=0.1,
-            blocking_percentile=0.1,
-            exclude_solvent=True,
-            dark_size_threshold=0.1,
-            exclude_positive_diffmap=True,
-            exclude_large_occupancy_outliers=False,
-        )
-
 
 # --- Other Grouped Settings ---
 
