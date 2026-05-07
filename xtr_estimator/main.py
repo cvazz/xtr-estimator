@@ -59,7 +59,6 @@ def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None, prescribe_ma
             logger.warning("map_dark_base provided but will be ignored in triggered mode.")
         unscaled_dark, unscaled_triggered = get_maps(config)
         diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
-        print("diffmap index:", diffmap.index)
     else:
         raise ValueError(
             f"Unknown comparison type: {config['general']['comparison_type']}"
