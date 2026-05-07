@@ -27,6 +27,7 @@ import warnings
 
 from .masking import support_from_masker
 from .logger import setup_logger
+from .configuration import MapProcessingSettings
 
 logger = setup_logger()
 
@@ -245,18 +246,9 @@ def calculate_diffmaps(
             diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
                 kweight_mode=weight_mode, kweight_parameter=opt_k, mapset=map_set
             )
-            # final_map, meta = compute_meteor_phaseboost_map(
-            #     map_set,
-            #     max_iterations=20,
-            #     kweight_mode=weight_mode,
-            #     kweight_parameter=opt_k,
-            #     tv_denoise_mode=weight_mode,
-            #     # tv_weight=opt_tv,
-            # )
             logger.warning(
                 "it_tv mode does not currently support parameter loading/saving; running with default parameters."
             )
-
 
         return diffmap
 
@@ -368,15 +360,17 @@ def combined_diffmap_calc(
     map_dark,
     map_triggered,
     map_dark_comp,
-    processing_config: dict,
+    processing_config: dict | MapProcessingSettings,
     general_config=None,
-    allow_saving=True,
 ) -> rsmap.Map:
+    if isinstance(processing_config, dict):
+        processing_config = MapProcessingSettings(**processing_config)
     diffmap_type = processing_config["diffmap_type"]
     filepath = Path(diffmap_file_name(processing_config, general_config))
     logger.info(f"Checking for existing diffmap at {filepath}")
     if (
         filepath.exists()
+        and not processing_config["recalculate_map_from_scratch"]
         and (Path().stat().st_mtime - filepath.stat().st_mtime) < 24 * 3600
     ):
         logger.info(f"Loading preprocessed maps from {filepath}")
@@ -407,9 +401,10 @@ def combined_diffmap_calc(
             #     f"Unknown or unset diffmap_type: {diffmap_type}, defaulting to vanilla"
             # )
             diffmap = compute_difference_map(derivative=map_triggered, native=map_dark)
-    if allow_saving:
-        diffmap.write_mtz(filepath)
-        logger.info(f"Saved diffmap to {filepath}")
+
+    diffmap.write_mtz(filepath)
+    logger.info(f"Saved diffmap to {filepath}")
+
     return diffmap
 
 
@@ -428,7 +423,6 @@ def autoshift_rsmap_old(
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc, high_resolution_limit=general_config["high_resolution_limit"]
         )
-
     rsmap_np = map_in.to_3d_numpy_map(map_sampling=map_sampling)
     map_dark_comp_np = map_dark_comp.to_3d_numpy_map(map_sampling=map_sampling)
 
@@ -618,6 +612,7 @@ def estimate_absolute_densities(
     map_model: rsmap.Map,
     pdb_file: str,
     hs_limit: float,
+    map_sampling: int = 3,
     plot: bool = True,
 ):
     """
@@ -629,8 +624,8 @@ def estimate_absolute_densities(
     # 1. Extract metadata and numpy representations
     cell: gemmi.UnitCell = map_model.cell  # type: ignore
     spacegroup: gemmi.SpaceGroup = map_model.spacegroup  # type: ignore
-    map_model_np = map_model.to_3d_numpy_map(map_sampling=3)
-    map_exp_np = map_exp.to_3d_numpy_map(map_sampling=3)
+    map_model_np = map_model.to_3d_numpy_map(map_sampling=map_sampling)
+    map_exp_np = map_exp.to_3d_numpy_map(map_sampling=map_sampling)
     grid_shape = map_model_np.shape
 
     # 2. Generate Masks
@@ -690,6 +685,7 @@ def autoshift_rsmap(
         map_dark_comp,
         general_config["pdbloc_dark"],
         general_config["high_resolution_limit"],
+        map_sampling=general_config["map_sampling"],
         plot=diagnostic_plots,
     )
     if np.abs(estimates["rho_abs_shift"] - estimates["rho_comb"]) > 0.01:
@@ -716,9 +712,9 @@ def autoshift_rsmap(
 
 def processing_dict_2_binary(processing_dict) -> str:
     key_names = [
-        k
-        for k in processing_dict.keys()
-        if k not in ["diffmap_type", "simple_dark_correction"]
+        "calculate_diffmap_before_f000",
+        "dark_mean_correction",
+        "preprocessing",
     ]
     key_names = sorted(key_names)
     binary_string = ""
@@ -756,7 +752,6 @@ def shift_mean(
             map_dark_comp,
             processing_config=processing_config,
             general_config=config["general"],
-            allow_saving=False,
         )
         diffmap_temp_np = diffmap_temp.to_3d_numpy_map(
             map_sampling=config["general"]["map_sampling"]
@@ -816,7 +811,6 @@ def prepare_maps(
             map_dark_comp,
             processing_config=config["map_processing"],
             general_config=config["general"],
-            allow_saving=True,
         )
         if diffmap_first and dark_mean_correction:
             if config["map_processing"]["simple_dark_correction"]:
@@ -838,7 +832,6 @@ def prepare_maps(
             map_dark_comp,
             processing_config=config["map_processing"],
             general_config=config["general"],
-            allow_saving=True,
         )
     else:
         raise ValueError("Invalid configuration for diffmap calculation")

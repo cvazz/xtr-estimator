@@ -124,10 +124,11 @@ class MaskingSettings(BaseModelDictlike):
 
 class MapProcessingSettings(BaseModelDictlike):
     diffmap_type: Literal["tv", "it_tv", "vanilla", "kweighted"] = "tv"
-    dark_mean_correction: bool = True
     simple_dark_correction: bool = True
+    dark_mean_correction: bool = True
     calculate_diffmap_before_f000: bool = False
     preprocessing: bool = False
+    recalculate_map_from_scratch: bool = False
 
 
 class PlotSettings(BaseModelDictlike):
