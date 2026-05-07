@@ -289,13 +289,21 @@ def make_inclusion_mask(diffmap: rsmap.Map, map_dark: rsmap.Map, config: Setting
     ValueError
         _description_
     """
-    return make_inclusion_mask_real(
-        diffmap,
-        map_dark,
-        map_sampling=config["general"]["map_sampling"],
-        masking_config=config["masking"],
-        pdbloc_dark=config["input_files"]["pdb_dark"],
-    )
+    try:
+        return make_inclusion_mask_real(
+            diffmap,
+            map_dark,
+            map_sampling=config["general"]["map_sampling"],
+            masking_config=config["masking"],
+            pdbloc_dark=config["input_files"]["pdb_dark"],
+        )
+    except ValueError as e:
+        logger.error("Error in make_inclusion_mask: " + str(e))
+        logger.error(f"{np.min(map_dark.compute_dHKL())=}")
+        logger.error(f"{np.min(diffmap.compute_dHKL())=}")
+        logger.error(f"{config=}")
+
+        raise
 
 
 def make_inclusion_mask_real(
