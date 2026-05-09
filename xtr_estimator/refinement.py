@@ -7,6 +7,7 @@ from pathlib import Path
 import gemmi
 import numpy as np
 from itertools import combinations
+from typing import Union
 
 from xtr_estimator.xtr_maps import find_rfree_column
 
@@ -60,7 +61,7 @@ def run_single_refinement(
     if not (pdb_abs.exists() and mtz_abs.exists()):
         logger.error("Input files missing.")
         raise FileNotFoundError(
-            "PDB or MTZ file not found. Inputs were: {pdb_file}, {mtz_file}"
+            f"PDB or MTZ file not found. Inputs were: {pdb_file}, {mtz_file}"
         )
     ds_temp = rs.read_mtz(mtz_file)
     if cif_file is not None:
@@ -95,13 +96,12 @@ def run_single_refinement(
         ]
     )
 
-    logger.info(f"Running refinement in {sandbox}...")
-    logger.info("Refinement command arguments:\n" + "\n".join(f"  {arg}" for arg in refine_cmd))
+    logger.info(f"Running refinement, for logs see {sandbox / f'{prefix}_001.log'} ...")
     success = run_command(refine_cmd, f"{prefix}.log", cwd=sandbox)
 
     if not success:
         logger.error("Phenix refinement failed.")
-        logger.info(f"Refinement command was: \n{' '.join(refine_cmd)}")
+        logger.info("Refinement command arguments:\n" + "\n".join(f"  {arg}" for arg in refine_cmd))
         raise RuntimeError("Refinement failed.")
 
     # 3. Validation (CC)
@@ -161,6 +161,228 @@ def get_origin_code(struct_num, altloc):
             return "F"
 
     return f"{struct_num}{alt}"
+
+
+
+
+def merge_structures_model_level(
+    st1: Union[str, gemmi.Structure],
+    st2: Union[str, gemmi.Structure],
+    st1_weight: float = 0.5,
+) -> gemmi.Structure:
+    """
+    Model-level merge:
+    - Entire structure 1 → altloc A
+    - Entire structure 2 → altloc B
+    - No coordinate averaging
+    - Chemically safe for Phenix refinement
+    """
+
+    if isinstance(st1, str):
+        st1 = gemmi.read_structure(st1)
+    if isinstance(st2, str):
+        st2 = gemmi.read_structure(st2)
+
+    assert 0.0 <= st1_weight <= 1.0, "st1_weight must be between 0 and 1"
+    st2_weight = 1.0 - st1_weight
+
+    # --- Copy header safely ---
+    out = gemmi.Structure()
+    out.name = st1.name
+    out.cell = st1.cell
+    out.spacegroup_hm = st1.spacegroup_hm
+    out.ncs = st1.ncs
+    out.entities = st1.entities
+    out.raw_remarks = st1.raw_remarks
+
+    # We create ONE model
+    new_model = gemmi.Model("1")
+
+    # Index chains in st2
+    st2_chains = {}
+    for m in st2:
+        for c in m:
+            st2_chains.setdefault(c.name, []).append(c)
+
+    for m1 in st1:
+        for c1 in m1:
+            new_chain = gemmi.Chain(c1.name)
+
+            # Find matching chain in st2 (first occurrence)
+            c2_list = st2_chains.get(c1.name, [])
+            c2 = c2_list[0] if c2_list else None
+
+            # Build residue map for st2
+            c2_res_map = {}
+            if c2:
+                for r2 in c2:
+                    key = (r2.seqid.num, r2.seqid.icode, r2.name)
+                    c2_res_map[key] = r2
+
+            for r1 in c1:
+                key = (r1.seqid.num, r1.seqid.icode, r1.name)
+
+                r2 = c2_res_map.get(key)
+
+                new_res = gemmi.Residue()
+                new_res.name = r1.name
+                new_res.seqid = r1.seqid
+                new_res.entity_type = r1.entity_type
+                new_res.subchain = r1.subchain
+
+                # --- Add structure 1 atoms (altloc A) ---
+                for atom in r1:
+                    a = gemmi.Atom()
+                    a.name = atom.name
+                    a.element = atom.element
+                    a.charge = atom.charge
+                    a.pos = atom.pos
+                    a.b_iso = atom.b_iso
+                    a.occ = st1_weight
+                    a.altloc = "A"
+                    new_res.add_atom(a)
+
+                # --- Add structure 2 atoms (altloc B) ---
+                if r2:
+                    for atom in r2:
+                        a = gemmi.Atom()
+                        a.name = atom.name
+                        a.element = atom.element
+                        a.charge = atom.charge
+                        a.pos = atom.pos
+                        a.b_iso = atom.b_iso
+                        a.occ = st2_weight
+                        a.altloc = "B"
+                        new_res.add_atom(a)
+
+                new_chain.add_residue(new_res)
+
+            new_model.add_chain(new_chain)
+
+    out.add_model(new_model)
+    return out
+
+
+
+
+def combine_and_weight_structures_refined(st1, st2, st1weight=0.5, threshold=0.5):
+    if isinstance(st1, str):
+        st1 = gemmi.read_structure(st1)
+    if isinstance(st2, str):
+        st2 = gemmi.read_structure(st2)
+
+    st2weight = 1.0 - st1weight
+
+    # 1. NEW: Clone the first structure to preserve all REMARKs, CRYST1, SCALE, etc.
+    new_st = st1.clone()
+
+    # Remove existing models so we can rebuild them with our merged coordinates
+    new_st.models.clear()
+
+    # Phenix-friendly AltLoc map
+    ALT_MAP = {1: "A", 2: "B"}
+    BACKBONE = {"N", "CA", "C", "O"}
+
+    for m_idx, (m1, m2) in enumerate(zip(st1, st2)):
+        new_model = gemmi.Model(getattr(m1, "name", str(m_idx + 1)))
+
+        for c1, c2 in zip(m1, m2):
+            new_chain = gemmi.Chain(c1.name)
+            c2_residues = {(r.seqid.num, r.seqid.icode, r.name): r for r in c2}
+
+            for r1 in c1:
+                new_res = gemmi.Residue()
+                new_res.name = r1.name
+                new_res.seqid = r1.seqid
+
+                r2 = c2_residues.get((r1.seqid.num, r1.seqid.icode, r1.name))
+                atom_groups = {}
+
+                # Helper to pool atoms
+                def add_to_pool(res, weight, struct_idx):
+                    if not res:
+                        return
+                    for atom in res:
+                        atom_groups.setdefault(atom.name, []).append(
+                            {
+                                "src": struct_idx,
+                                "occ": atom.occ * weight,
+                                "pos": atom.pos,
+                                "b_iso": atom.b_iso,
+                                "element": atom.element,
+                                "charge": atom.charge,
+                            }
+                        )
+
+                add_to_pool(r1, st1weight, 1)
+                add_to_pool(r2, st2weight, 2)
+
+                for atom_name, pool in atom_groups.items():
+                    # If it's a backbone atom, we are much more aggressive about merging
+                    active_threshold = 1.5 if atom_name in BACKBONE else threshold
+
+                    while len(pool) > 1:
+                        dists = [
+                            pool[i]["pos"].dist(pool[j]["pos"])
+                            for i, j in combinations(range(len(pool)), 2)
+                        ]
+                        idx_pairs = list(combinations(range(len(pool)), 2))
+                        min_idx = np.argmin(dists)
+
+                        if dists[min_idx] < active_threshold:
+                            i, j = idx_pairs[min_idx]
+                            a1, a2 = pool.pop(max(i, j)), pool.pop(min(i, j))
+
+                            total_occ = a1["occ"] + a2["occ"]
+                            w1, w2 = (
+                                (a1["occ"] / total_occ, a2["occ"] / total_occ)
+                                if total_occ > 0
+                                else (0.5, 0.5)
+                            )
+
+                            pool.append(
+                                {
+                                    "src": 0,  # 0 indicates merged
+                                    "occ": total_occ,
+                                    "pos": gemmi.Position(
+                                        a1["pos"].x * w1 + a2["pos"].x * w2,
+                                        a1["pos"].y * w1 + a2["pos"].y * w2,
+                                        a1["pos"].z * w1 + a2["pos"].z * w2,
+                                    ),
+                                    "b_iso": a1["b_iso"] * w1 + a2["b_iso"] * w2,
+                                    "element": a1["element"],
+                                    "charge": a1["charge"],
+                                }
+                            )
+                        else:
+                            break
+
+                    # Add finalized atoms to residue
+                    for i, state in enumerate(pool):
+                        new_atom = gemmi.Atom()
+                        new_atom.name = atom_name
+                        new_atom.pos = state["pos"]
+                        new_atom.occ = state["occ"]
+                        new_atom.b_iso = state["b_iso"]
+                        new_atom.element = state["element"]
+                        new_atom.charge = state["charge"]
+
+                        # Assign AltLocs only if multiple states exist
+                        if len(pool) > 1:
+                            new_atom.altloc = ALT_MAP.get(state["src"], chr(65 + i))
+                        else:
+                            # 2. FIX: gemmi requires the null character for "no altloc"
+                            new_atom.altloc = "\0"
+                            # Force full occupancy for single-state atoms to satisfy Phenix
+                            new_atom.occ = 1.00
+
+                        new_res.add_atom(new_atom)
+
+                new_chain.add_residue(new_res)
+            new_model.add_chain(new_chain)
+        new_st.add_model(new_model)
+
+    return new_st
 
 
 def combine_and_weight_structures(st1, st2, st1weight=0.5, threshold=0.5):
@@ -307,3 +529,144 @@ def combine_and_weight_structures(st1, st2, st1weight=0.5, threshold=0.5):
         new_st.add_model(new_model)
 
     return new_st
+
+
+
+
+def collapse_to_main_conformer(st: Union[str, gemmi.Structure]) -> gemmi.Structure:
+    """
+    For each atom name in each residue, keep only the altloc
+    with the highest occupancy.
+    """
+
+    if isinstance(st, str):
+        st = gemmi.read_structure(st)
+
+    out = gemmi.Structure()
+    out.name = st.name
+    out.cell = st.cell
+    out.spacegroup_hm = st.spacegroup_hm
+    out.ncs = st.ncs
+    out.entities = st.entities
+    out.raw_remarks = st.raw_remarks
+
+    for i, model in enumerate(st, start=1):
+        new_model = gemmi.Model(str(i))
+
+        for chain in model:
+            new_chain = gemmi.Chain(chain.name)
+
+            for res in chain:
+                new_res = gemmi.Residue()
+                new_res.name = res.name
+                new_res.seqid = res.seqid
+                new_res.entity_type = res.entity_type
+                new_res.subchain = res.subchain
+
+                # --- group atoms by name ---
+                atom_map = {}
+                for atom in res:
+                    name = atom.name
+                    if name not in atom_map:
+                        atom_map[name] = atom
+                    else:
+                        if atom.occ > atom_map[name].occ:
+                            atom_map[name] = atom
+
+                # --- keep only best atoms ---
+                for atom in atom_map.values():
+                    a = gemmi.Atom()
+                    a.name = atom.name
+                    a.element = atom.element
+                    a.charge = atom.charge
+                    a.pos = atom.pos
+                    a.b_iso = atom.b_iso
+                    a.occ = 1.0  # normalize
+                    a.altloc = "\0"  # remove altloc
+                    new_res.add_atom(a)
+
+                new_chain.add_residue(new_res)
+
+            new_model.add_chain(new_chain)
+        out.add_model(new_model)
+
+    return out
+
+
+def merge_structures_model_greedy(
+    st1: Union[str, gemmi.Structure],
+    st2: Union[str, gemmi.Structure],
+    st1_weight: float = 0.5,
+) -> gemmi.Structure:
+
+    st1 = collapse_to_main_conformer(st1)
+    st2 = collapse_to_main_conformer(st2)
+
+    st2_weight = 1.0 - st1_weight
+
+    out = gemmi.Structure()
+    out.name = st1.name
+    out.cell = st1.cell
+    out.spacegroup_hm = st1.spacegroup_hm
+    out.ncs = st1.ncs
+    out.entities = st1.entities
+    out.raw_remarks = st1.raw_remarks
+
+    new_model = gemmi.Model("1")
+
+    # index chains in st2
+    st2_chains = {c.name: c for m in st2 for c in m}
+
+    for m1 in st1:
+        for c1 in m1:
+            new_chain = gemmi.Chain(c1.name)
+            c2 = st2_chains.get(c1.name)
+
+            # residue map for st2
+            c2_res_map = {}
+            if c2:
+                for r in c2:
+                    key = (r.seqid.num, r.seqid.icode, r.name)
+                    c2_res_map[key] = r
+
+            for r1 in c1:
+                key = (r1.seqid.num, r1.seqid.icode, r1.name)
+                r2 = c2_res_map.get(key)
+
+                new_res = gemmi.Residue()
+                new_res.name = r1.name
+                new_res.seqid = r1.seqid
+                new_res.entity_type = r1.entity_type
+                new_res.subchain = r1.subchain
+
+                # --- structure 1 → altloc A ---
+                for atom in r1:
+                    a = gemmi.Atom()
+                    a.name = atom.name.strip().rjust(4)
+                    a.element = atom.element
+                    a.charge = atom.charge
+                    a.pos = atom.pos
+                    a.b_iso = atom.b_iso
+                    a.occ = st1_weight
+                    a.altloc = "A"
+                    new_res.add_atom(a)
+
+                # --- structure 2 → altloc B ---
+                if r2:
+                    for atom in r2:
+                        a = gemmi.Atom()
+                        a.name = atom.name.strip().rjust(4)
+                        a.element = atom.element
+                        a.charge = atom.charge
+                        a.pos = atom.pos
+                        a.b_iso = atom.b_iso
+                        a.occ = st2_weight
+                        a.altloc = "B"
+                        new_res.add_atom(a)
+
+                new_chain.add_residue(new_res)
+
+            new_model.add_chain(new_chain)
+
+    out.add_model(new_model)
+    return out
