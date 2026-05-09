@@ -53,51 +53,6 @@ def test_find_rfree_column_multiple_candidates_picks_first(monkeypatch):
     assert xtr_maps.find_rfree_column(ds) == "Rfree1"
 
 
-def test_save_to_folder_copies_inputs_and_collects_filelocs(monkeypatch, tmp_path):
-    src = tmp_path / "src"
-    src.mkdir()
-    for fname in ["dark.pdb", "trig.pdb", "dark.mtz", "trig.mtz", "diff.mtz"]:
-        (src / fname).write_text(fname, encoding="utf-8")
-
-    copied = []
-    monkeypatch.setattr(xtr_maps.shutil, "copy", lambda src, dst: copied.append((Path(src).name, Path(dst))))
-
-    emitted = []
-
-    def fake_save_extrapolated_map(*args, **kwargs):
-        emitted.append(kwargs.get("name_prefix"))
-        folder = args[4]
-        return str(folder / f"{kwargs['name_prefix']}.mtz")
-
-    monkeypatch.setattr(xtr_maps, "save_extrapolated_map", fake_save_extrapolated_map)
-
-    params = {
-        "folder": str(tmp_path / "out"),
-        "xtr_prefix": "job",
-        "diffmap_prefix": "_d",
-    }
-    input_cfg = {
-        "pdb_dark": str(src / "dark.pdb"),
-        "pdb_triggered": str(src / "trig.pdb"),
-        "map_dark": str(src / "dark.mtz"),
-        "map_triggered": str(src / "trig.mtz"),
-        "map_diff": str(src / "diff.mtz"),
-    }
-
-    filelocs = xtr_maps.save_to_folder(
-        diffmap=None,
-        map_dark=None,
-        parameters=params,
-        input_file_config=input_cfg,
-        save_dict={"a": 1.2, "b": 2.3},
-    )
-
-    out_dir = tmp_path / "out"
-    assert out_dir.exists()
-    assert len(copied) == 5
-    assert emitted == ["job_a", "job_b"]
-    assert len(filelocs) == 2
-    assert filelocs[0].endswith("job_a.mtz")
 
 
 def test_save_to_folder_raises_for_non_directory_target(tmp_path):

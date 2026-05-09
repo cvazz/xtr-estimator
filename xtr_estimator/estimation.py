@@ -90,6 +90,7 @@ def cummean_and_errors(stats_data, leng_shown=None, number_sym_ops=1, plot_confi
         "diff_sigma": diff_sigma[argsorted],
         "thresh_line": thresh_line,
         "pseudo_std": pseudo_std,
+        "number_sym_ops": number_sym_ops,
     }
 
 
@@ -104,7 +105,7 @@ def compact_v3(cummean_dict, plot_config={}):
     if np.any(average_distance_mask):
         bottom_index = np.where(average_distance_mask)[0][0]
 
-    min_size_middle = 10
+    min_size_middle = 5*cummean_dict['number_sym_ops']
     is_there_a_middle = bottom_index > 0 and min_size_middle < bottom_index
     if is_there_a_middle:
         middle_diff = (
@@ -133,7 +134,7 @@ def create_plot(
     if np.any(average_distance_mask):
         bottom_index = np.where(average_distance_mask)[0][0]
 
-    min_size_middle = 10
+    min_size_middle = 5*cummean_dict['number_sym_ops']
 
     marker = "."
     if ax is None:
@@ -213,6 +214,9 @@ def create_plot(
     )
 
     is_there_a_middle = bottom_index > 0 and min_size_middle < bottom_index
+
+    chi = "$\\chi$"
+
     if is_there_a_middle:
         middle_diff = (
             cummean_dict["diff_sigma"][bottom_index] + cummean_dict["diff_sigma"][0]
@@ -242,7 +246,6 @@ def create_plot(
             - 1,
             variation_range=(np.max(pseudo_range) - np.min(pseudo_range)) / middle_mean,
         )
-        chi = "$\\chi^{-1}$"
         text = ""
         text += f" {chi} =  {middle_mean:.3f}"
         text += f"\nSt. Dev.: {plot_stats['middle_std']:.3f} ({plot_stats['middle_std_rel']:.1%})"
@@ -252,8 +255,20 @@ def create_plot(
             text += "\nWarning: Min. est. less than\n1 std. dev. than reported est."
         if np.max(pseudo_range) > middle_mean + plot_stats["middle_std"] and False:
             text += "\nWarning: Max. est. more than\n1 std. dev. than reported est."
-        if np.min(pseudo_range)/np.max(pseudo_range) < 2/3:
-            text += "\nWarning: Large variation in estimates\nCheck the plot for details."
+        skip_first_idcs = cummean_dict['number_sym_ops']
+        if np.min(pseudo_range[skip_first_idcs:])/np.max(pseudo_range[skip_first_idcs:]) < 2/3:
+            warning_text = "Warning: Large variation in estimates\nCheck the plot for details."
+            text += f"\n{warning_text}"
+            logger.warning(warning_text)
+        if cummean_dict["diff_sigma"][0]/cummean_dict["diff_sigma"][bottom_index] < 1.2:
+            
+            print("diff_sigma[0]:", cummean_dict["diff_sigma"][0])
+            print("diff_sigma[skip_first_idcs]:", cummean_dict["diff_sigma"][bottom_index]) 
+            print("div", cummean_dict["diff_sigma"][0]/cummean_dict["diff_sigma"][bottom_index]) 
+
+            warning_text = "Warning: Very small estimation range\nCheck the plot for details."
+            text += f"\n{warning_text}"
+            logger.warning(warning_text)
         # text += f"\nMin-Max Variation: {plot_stats['variation_range']:.1%}"
         # text += f"\n Estimation Range: {plot_stats['estimation_range']:.0%}"
         # place legend like box in top right corner
@@ -266,7 +281,7 @@ def create_plot(
 
     # 4. Formatting
     if not plot_config["is_composite"]:
-        ax.set_ylabel("Extrapolation factor " + r"$ \chi^{-1} = -\Delta\rho/\rho_{0}$")
+        ax.set_ylabel(f"Extrapolation factor  {chi} = " + r"$-\Delta\rho/\rho_{0}$")
         ax.set_xlabel("Difference Map " + r"$-\Delta \rho$ (standard deviations)")
         # ax.legend(loc="upper left")
 
@@ -315,12 +330,14 @@ def plot_extrapolation_estimate(
         f"Mean of diffmap_np: {np.mean(diffmap_np)}, Mean of map_dark_np: {np.mean(map_dark_np)}"
     )
     stats_data = _calculate_statistics(diffmap_np, map_dark_np, inclusion_mask)
+    number_sym_ops = 1
     cummean_dict = cummean_and_errors(
-        stats_data, number_sym_ops=1, plot_config=config["plot"]
+        stats_data, number_sym_ops=number_sym_ops, plot_config=config["plot"]
     )
+    number_sym_ops = len(map_dark.spacegroup.operations())
+    cummean_dict['number_sym_ops'] = number_sym_ops
     # trend_data = _analyze_threshold_trends(
-    #     stats_data["diffmap_masked"],
-    #     stats_data["pseudo_occupancy"],
+    #     stats_data["diffmap_masked"], #     stats_data["pseudo_occupancy"],
     #     stats_data["weight"],
     # )
     # 5. Visualization

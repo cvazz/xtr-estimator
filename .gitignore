@@ -4,5 +4,6 @@ __pycache__/
 xtr_estimator.egg-info/
 
 # xtr_estimator/*pyc
-examples/scripts/tmp/*
-examples/notebooks/tmp/*
+examples/*/tmp
+examples/*/evaluations
+examples/*/extrapolated_maps
