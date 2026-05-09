@@ -281,7 +281,7 @@ def create_plot(
 
     # 4. Formatting
     if not plot_config["is_composite"]:
-        ax.set_ylabel(f"Extrapolation factor  {chi}" + r"$ = -\Delta\rho/\rho_{0}$")
+        ax.set_ylabel(f"Extrapolation factor  {chi} = " + r"$-\Delta\rho/\rho_{0}$")
         ax.set_xlabel("Difference Map " + r"$-\Delta \rho$ (standard deviations)")
         # ax.legend(loc="upper left")
 

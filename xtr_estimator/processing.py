@@ -784,17 +784,35 @@ def shift_mean(
     return map_dark, map_triggered, zero_freq_dark, zero_freq_triggered
 
 
-def prepare_maps(
-    unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
-) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map]:
-
-    struc = gemmi.read_pdb(config["input_files"]["pdb_dark"])
-    check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
-    map_dark_comp = gemmi_structure_to_calculated_map(
+def get_calculated_dark_map(config: dict, struc=None) -> rsmap.Map:
+    """Helper to generate the reference calculated map from structure."""
+    if struc is None:
+        struc = gemmi.read_pdb(config["input_files"]["pdb_dark"])
+    return gemmi_structure_to_calculated_map(
         struc,
         high_resolution_limit=config["general"]["high_resolution_limit"],
         map_sampling=config["general"]["map_sampling"],
     )
+
+
+def apply_autoshift(map_to_shift: rsmap.Map, map_dark_comp: rsmap.Map, config: dict):
+    """Unified logic for applying simple (old) or standard autoshift."""
+    use_old = config["map_processing"]["simple_dark_correction"]
+    shift_func = autoshift_rsmap_old if use_old else autoshift_rsmap
+
+    # We deepcopy to avoid mutating the original map if needed (as seen in get_map_dark)
+    shifted_map, zero_freq = shift_func(
+        copy.deepcopy(map_to_shift), config["general"], map_dark_comp
+    )
+    return shifted_map, zero_freq
+
+
+def prepare_maps(
+    unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
+) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map]:
+
+    check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
+    map_dark_comp = get_calculated_dark_map(config)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -802,79 +820,66 @@ def prepare_maps(
         map_triggered = scale_maps(
             reference_map=map_dark_comp, map_to_scale=unscaled_triggered
         )
-    diffmap_first = config["map_processing"]["calculate_diffmap_before_f000"]
-    dark_mean_correction = config["map_processing"]["dark_mean_correction"]
+
+    processing_config = config["map_processing"]
+    diffmap_first = processing_config["calculate_diffmap_before_f000"]
+    dark_mean_correction = processing_config["dark_mean_correction"]
+
     if diffmap_first or not dark_mean_correction:
         diffmap = combined_diffmap_calc(
             map_dark,
             map_triggered,
             map_dark_comp,
-            processing_config=config["map_processing"],
+            processing_config=processing_config,
             general_config=config["general"],
         )
         if diffmap_first and dark_mean_correction:
-            if config["map_processing"]["simple_dark_correction"]:
-                map_dark, zero_freq_dark = autoshift_rsmap_old(
-                    map_dark, config["general"], map_dark_comp
-                )
-            else:
-                map_dark, zero_freq_dark = autoshift_rsmap(
-                    map_dark, config["general"], map_dark_comp
-                )
+            map_dark, _ = apply_autoshift(map_dark, map_dark_comp, config)
 
     elif not diffmap_first:
-        map_dark, map_triggered, zero_freq_dark, zero_freq_triggered = shift_mean(
+        map_dark, map_triggered, _, _ = shift_mean(
             map_dark, map_triggered, config, map_dark_comp
         )
         diffmap = combined_diffmap_calc(
             map_dark,
             map_triggered,
             map_dark_comp,
-            processing_config=config["map_processing"],
+            processing_config=processing_config,
             general_config=config["general"],
         )
     else:
         raise ValueError("Invalid configuration for diffmap calculation")
+
     return diffmap, map_dark, map_triggered
 
 
-def get_map_dark(config, old=False):
+def get_map_dark(config: dict) -> rsmap.Map:
     ds_dark = rs.read_mtz(config["input_files"]["map_dark"])
-    struc_dark = gemmi.read_pdb(config["input_files"]["pdb_dark"])
-    map_dark_comp = gemmi_structure_to_calculated_map(
-        struc_dark,
-        high_resolution_limit=config["general"]["high_resolution_limit"],
-    )
-    if config["input_files"]["columns_dark"]["phase_column"] not in ds_dark.columns:
-        phase_col_name = config["input_files"]["columns_dark"]["phase_column"]
-        warning_msg = f"Phase column {phase_col_name} not found in dark dataset. "
-        warning_msg += "Using calculated phases from the PDB structure."
-        logger.warning(warning_msg)
-        ds_dark[phase_col_name] = map_dark_comp.phases
+    map_dark_comp = get_calculated_dark_map(config)
+
+    # Handle missing phases
+    phase_col = config["input_files"]["columns_dark"]["phase_column"]
+    if phase_col not in ds_dark.columns:
+        logger.warning(f"Phase column {phase_col} not found. Using calculated phases.")
+        ds_dark[phase_col] = map_dark_comp.phases
+
     map_dark = rsmap.Map(ds_dark, **config["input_files"]["columns_dark"])
     map_dark.canonicalize_amplitudes()
     map_dark = cut_resolution(
         map_dark, high_resolution_limit=config["general"]["high_resolution_limit"]
     )
     map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=map_dark)
-    if old:
-        map_dark, shift2 = autoshift_rsmap_old(
-            copy.deepcopy(map_dark),
-            config["general"],
-            map_dark_comp,
-        )
-    else:
-        map_dark, shift1 = autoshift_rsmap(
-            copy.deepcopy(map_dark),
-            config["general"],
-            map_dark_comp,
-        )
+
+    # Apply the same logic used in prepare_maps
+    if config["map_processing"]["dark_mean_correction"]:
+        map_dark, _ = apply_autoshift(map_dark, map_dark_comp, config)
+
     return map_dark
 
 
-def get_maps_diff(config, map_dark=None, old=False):
+def get_maps_diff(config, map_dark=None):
     if map_dark is None:
-        map_dark = get_map_dark(config, old)
+        map_dark = get_map_dark(config)
     else:
         map_dark = copy.deepcopy(map_dark)
 
