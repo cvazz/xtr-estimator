@@ -1,3 +1,5 @@
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
 from contextlib import redirect_stdout
@@ -5,9 +7,6 @@ from xtr_estimator.configuration import merge_settings
 from xtr_estimator.masking import make_inclusion_mask
 from xtr_estimator.processing import get_maps, prepare_maps
 from xtr_estimator.main import xtr_logic
-from xtr_estimator.logger import setup_logger
-
-logger = setup_logger()
 
 
 def plot_extrapolation_results(
@@ -234,8 +233,6 @@ def make_overview_plots(
         merged_config = merge_settings(merged_config, override_dict)
 
         # this will suppress the output of the following function, which is quite verbose
-        print("ho")
-        logger.warning("Verbose mode?")
         if verbose:
             _, _, _, map_dark_base = xtr_logic(
                 merged_config,
@@ -244,15 +241,19 @@ def make_overview_plots(
                 prescribe_mask=inclusion_mask_thresh,
             )
         else:
+            xtr_logger = logging.getLogger("xtr_estimator")
+            original_level = xtr_logger.level
+            xtr_logger.setLevel(logging.CRITICAL)
+            # logging.disable(logging.CRITICAL)
             with redirect_stdout(None):
-                print("hi")
-                logger.warning("Verbose mode is off, suppressing xtr_logic output.")
                 _, _, _, map_dark_base = xtr_logic(
                     merged_config,
                     ax=ax,
                     map_dark_base=map_dark_base,
                     prescribe_mask=inclusion_mask_thresh,
                 )
+            xtr_logger.setLevel(original_level)
+            # logging.disable(logging.NOTSET)
 
         return map_dark_base
 
