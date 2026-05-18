@@ -27,7 +27,12 @@ import warnings
 
 from .masking import support_from_masker
 from .logger import setup_logger
-from .configuration import MapProcessingSettings
+from .configuration import (
+    MapProcessingSettings,
+    InputFileSettings,
+    Settings,
+    GeneralSettings,
+)
 
 logger = setup_logger()
 
@@ -55,44 +60,53 @@ def convert_ints_to_sf2(
     return ds2, cols
 
 
-def get_maps(input_files_dict: dict) -> tuple[rsmap.Map, rsmap.Map]:
-    dataloc_dark = input_files_dict["input_files"]["map_dark"]
-    dataloc_triggered = input_files_dict["input_files"]["map_triggered"]
+def get_maps(
+    input_files_dict: dict | InputFileSettings, high_resolution_limit: float
+) -> tuple[rsmap.Map, rsmap.Map]:
+    if isinstance(input_files_dict, dict):
+        input_files_dict = InputFileSettings(**input_files_dict)
+    # high_resolution_limit = input_files_dict["high_resolution_limit"]
+
+    dataloc_dark = input_files_dict["map_dark"]
+    dataloc_triggered = input_files_dict["map_triggered"]
     ds_triggered = rs.read_mtz(dataloc_triggered)
     ds_dark = rs.read_mtz(dataloc_dark)
 
-    if input_files_dict["input_files"]["columns_are_ints"]:
-        dark_cols = input_files_dict["input_files"]["columns_dark_ints"]
-        triggered_cols = input_files_dict["input_files"]["columns_triggered_ints"]
-        struc = gemmi.read_pdb(input_files_dict["input_files"]["pdb_dark"])
+    if input_files_dict["columns_are_ints"]:
+        dark_cols = input_files_dict["columns_dark_ints"]
+        triggered_cols = input_files_dict["columns_triggered_ints"]
+        struc = gemmi.read_pdb(input_files_dict["pdb_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
-            high_resolution_limit=input_files_dict["general"]["high_resolution_limit"],
+            high_resolution_limit=high_resolution_limit,
         )
         ds_dark, dark_cols = convert_ints_to_sf2(ds_dark, dark_cols, map_dark_comp)
         ds_triggered, triggered_cols = convert_ints_to_sf2(
             ds_triggered, triggered_cols, map_dark_comp
         )
-        input_files_dict["input_files"]["columns_dark"] = dark_cols
-        input_files_dict["input_files"]["columns_triggered"] = triggered_cols
-    elif input_files_dict["input_files"]["columns_dark"]["phase_column"] == "MODEL":
-        input_files_dict["input_files"]["columns_dark"]["phase_column"] = "PHIC"
-        input_files_dict["input_files"]["columns_triggered"]["phase_column"] = "PHIC"
-        struc = gemmi.read_pdb(input_files_dict["input_files"]["pdb_dark"])
+        input_files_dict.columns_dark = dark_cols
+        input_files_dict.columns_triggered = triggered_cols
+    elif input_files_dict.columns_dark["phase_column"] == "MODEL":
+        input_files_dict.columns_dark["phase_column"] = "PHIC"
+        input_files_dict.columns_triggered["phase_column"] = "PHIC"
+        struc = gemmi.read_pdb(input_files_dict["pdb_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
-            high_resolution_limit=input_files_dict["general"]["high_resolution_limit"],
+            high_resolution_limit=high_resolution_limit,
         )
         ds_dark["PHIC"] = map_dark_comp.phases
         ds_triggered["PHIC"] = map_dark_comp.phases
 
-    return get_maps_sf(ds_dark, ds_triggered, input_files_dict)
+    return get_maps_sf(ds_dark, ds_triggered, input_files_dict, high_resolution_limit)
 
 
 def get_maps_sf(
-    ds_dark, ds_triggered, input_files_dict: dict
+    ds_dark: rsmap.Map,
+    ds_triggered: rsmap.Map,
+    input_files_dict: InputFileSettings,
+    high_resolution_limit: float,
 ) -> tuple[rsmap.Map, rsmap.Map]:
-    high_res_limit = input_files_dict["general"]["high_resolution_limit"]
+    high_res_limit = high_resolution_limit
 
     if high_res_limit:
         logger.info(f"Imposing high_resolution_limit: {high_res_limit}")
@@ -101,9 +115,9 @@ def get_maps_sf(
             ds_triggered, high_resolution_limit=high_res_limit
         ).copy()
 
-    dark_columns = input_files_dict["input_files"]["columns_dark"]
-    triggered_columns = input_files_dict["input_files"]["columns_triggered"]
-    if input_files_dict["input_files"]["impose_dark_phases"]:
+    dark_columns = input_files_dict.columns_dark
+    triggered_columns = input_files_dict.columns_triggered
+    if input_files_dict.impose_dark_phases:
         ds_triggered.loc[:, triggered_columns["phase_column"]] = ds_dark[
             dark_columns["phase_column"]
         ]
@@ -113,7 +127,9 @@ def get_maps_sf(
 
 
 def check_highres_limit(
-    map_dark: rsmap.Map, map_triggered: rsmap.Map, general_config: dict
+    map_dark: rsmap.Map,
+    map_triggered: rsmap.Map,
+    general_config: dict | GeneralSettings,
 ):
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
@@ -338,7 +354,7 @@ def calculate_diffmaps_deprecated(
     return final_map
 
 
-def get_meta_loc(general_config):
+def get_meta_loc(general_config: dict | GeneralSettings):
     output_folder = general_config["output_folder"]
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -348,7 +364,9 @@ def get_meta_loc(general_config):
     return evaluation_path_basis, name
 
 
-def get_meta_loc_diffmap(general_config, processing_config):
+def get_meta_loc_diffmap(
+    general_config: dict | GeneralSettings, processing_config: MapProcessingSettings
+):
     binary_string = processing_dict_2_binary(processing_config)
     evaluation_path_basis, name = get_meta_loc(general_config)
     name = f"diffmap_config_{general_config['high_resolution_limit']*10:.0f}_{binary_string}.pkl"
@@ -361,7 +379,7 @@ def combined_diffmap_calc(
     map_triggered,
     map_dark_comp,
     processing_config: dict | MapProcessingSettings,
-    general_config=None,
+    general_config: dict | GeneralSettings,
 ) -> rsmap.Map:
     if isinstance(processing_config, dict):
         processing_config = MapProcessingSettings(**processing_config)
@@ -371,7 +389,7 @@ def combined_diffmap_calc(
     if (
         filepath.exists()
         and not processing_config["recalculate_map_from_scratch"]
-        and (Path().stat().st_mtime - filepath.stat().st_mtime) < 24 * 3600
+        and (Path().stat().st_mtime - filepath.stat().st_mtime) < 30 * 24 * 3600
     ):
         logger.info(f"Loading preprocessed maps from {filepath}")
         diffmap = rsmap.Map.read_mtz_file(filepath)
@@ -728,7 +746,9 @@ def processing_dict_2_binary(processing_dict) -> str:
     return binary_string
 
 
-def diffmap_file_name(processing_config, general_config):
+def diffmap_file_name(
+    processing_config: MapProcessingSettings, general_config: GeneralSettings
+):
     binary_string = processing_dict_2_binary(processing_config)
     evaluation_path_basis, name = get_meta_loc(general_config)
     diffmap_type = processing_config["diffmap_type"]

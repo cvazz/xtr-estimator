@@ -5,6 +5,9 @@ from xtr_estimator.configuration import merge_settings
 from xtr_estimator.masking import make_inclusion_mask
 from xtr_estimator.processing import get_maps, prepare_maps
 from xtr_estimator.main import xtr_logic
+from xtr_estimator.logger import setup_logger
+
+logger = setup_logger()
 
 
 def plot_extrapolation_results(
@@ -66,7 +69,10 @@ def create_global_inclusion_mask(
         print("Calculating global inclusion mask across all configs...")
         inclusion_masks = []
         for config in loading_function(diff=False, global_overrides=global_overrides):
-            unscaled_dark, unscaled_triggered = get_maps(config)
+            unscaled_dark, unscaled_triggered = get_maps(
+                config.input_files,
+                high_resolution_limit=config.general.high_resolution_limit,
+            )
             diffmap, map_dark, map_triggered = prepare_maps(
                 unscaled_dark, unscaled_triggered, config
             )
@@ -211,7 +217,9 @@ def make_overview_plots(
         loading_function, global_mask, global_overrides
     )
 
-    def plot_overview_pl_configs(config, override_dict={},  ax=None, map_dark_base=None,verbose=False):
+    def plot_overview_pl_configs(
+        config, override_dict={}, ax=None, map_dark_base=None, verbose=False
+    ):
         """
         Plots all configs in a grid
 
@@ -221,58 +229,77 @@ def make_overview_plots(
         if ax is None:
             raise ValueError("An axis must be provided for plotting.")
 
-        # print(
-        #     f"Processing config: {config['general']['name_human']}, \t({i+1}/{len(configs)})"
-        # )
         ax.set_title(config["general"]["name_human"])
         merged_config = merge_settings(config, global_overrides)
         merged_config = merge_settings(merged_config, override_dict)
 
         # this will suppress the output of the following function, which is quite verbose
+        print("ho")
+        logger.warning("Verbose mode?")
         if verbose:
             _, _, _, map_dark_base = xtr_logic(
-                merged_config, ax=ax, map_dark_base=map_dark_base, prescribe_mask=inclusion_mask_thresh
+                merged_config,
+                ax=ax,
+                map_dark_base=map_dark_base,
+                prescribe_mask=inclusion_mask_thresh,
             )
         else:
             with redirect_stdout(None):
+                print("hi")
+                logger.warning("Verbose mode is off, suppressing xtr_logic output.")
                 _, _, _, map_dark_base = xtr_logic(
-                        merged_config, ax=ax, map_dark_base=map_dark_base, prescribe_mask=inclusion_mask_thresh
-                    )
+                    merged_config,
+                    ax=ax,
+                    map_dark_base=map_dark_base,
+                    prescribe_mask=inclusion_mask_thresh,
+                )
 
         return map_dark_base
 
     def overview_plots(xtr_setups, config_indices, map_dark_base=None, verbose=False):
         len_i = len(xtr_setups)
         len_j = len(config_indices)
-        fig, axs = plt.subplots(len_i, len_j, figsize=(5*len_j, 4*len_i), tight_layout=True)
+        fig, axs = plt.subplots(
+            len_i, len_j, figsize=(5 * len_j, 4 * len_i), tight_layout=True
+        )
         for ii, setup in enumerate(xtr_setups):
             for jj, idx in enumerate(config_indices):
                 print(f"Plotting config {idx} for setup {setup.prefix}")
                 # Unpack everything directly from the helper method
-                ax = axs.flat[ii*len_j + jj]
-                map_dark_base = plot_overview_pl_configs(*setup.get_plotting_data(idx), map_dark_base=map_dark_base, ax=ax, verbose=verbose)
+                ax = axs.flat[ii * len_j + jj]
+                map_dark_base = plot_overview_pl_configs(
+                    *setup.get_plotting_data(idx),
+                    map_dark_base=map_dark_base,
+                    ax=ax,
+                    verbose=verbose,
+                )
                 if jj:
                     ax.set_ylabel("")
                 else:
-                    ax.text(-0.15, 0.5, f"{setup.title}", 
-                transform=ax.transAxes,  # Positions relative to the axes (0 to 1)
-                fontsize=20,             # Increased size
-                rotation=90,             # Rotates text to run parallel to the y-axis
-                va='center',             # Vertically centers the text at the 0.5 mark
-                ha='right')              # Aligns it properly outside the axis
+                    ax.text(
+                        -0.15,
+                        0.5,
+                        f"{setup.title}",
+                        transform=ax.transAxes,  # Positions relative to the axes (0 to 1)
+                        fontsize=20,  # Increased size
+                        rotation=90,  # Rotates text to run parallel to the y-axis
+                        va="center",  # Vertically centers the text at the 0.5 mark
+                        ha="right",
+                    )  # Aligns it properly outside the axis
                     ax.set_ylabel("Extrapolation Estimate", fontsize=10)
-                if ii<len_i-1:
+                if ii < len_i - 1:
                     ax.set_xlabel("")
                 if ii:
                     ax.set_title("")
         return fig, map_dark_base
-    return overview_plots
 
+    return overview_plots
 
 
 # def make_compare_diffmaps(
 #     loading_function: callable, global_mask: bool, global_overrides: dict = {}
 # ):
+
 
 def compare_diffmaps(configs, override_dict_A={}, override_dict_B={}, verbose=False):
     """
@@ -284,7 +311,7 @@ def compare_diffmaps(configs, override_dict_A={}, override_dict_B={}, verbose=Fa
     # suppress logging from xtr_estimator, verbose when processing many configs
     # logging.getLogger("xtr_estimator").setLevel(logging.ERROR)
     def calc_amplitude_similarity(amp_A, amp_B):
-        return np.mean((amp_A + amp_B) ** 2 / 2/(amp_A**2 + amp_B**2 + 1e-8))
+        return np.mean((amp_A + amp_B) ** 2 / 2 / (amp_A**2 + amp_B**2 + 1e-8))
 
     def calc_cosine_phase_similarity(phases_A, phases_B):
         rad1 = np.radians(phases_A)
@@ -297,10 +324,18 @@ def compare_diffmaps(configs, override_dict_A={}, override_dict_B={}, verbose=Fa
         return np.mean(np.cos(phase_diff))
 
     def inner_action(config_A, config_B):
-        unscaled_dark, unscaled_triggered = get_maps(config_A)
+        unscaled_dark, unscaled_triggered = get_maps(
+            config_A.input_files,
+            high_resolution_limit=config_A.general.high_resolution_limit,
+        )
+        unscaled_dark, unscaled_triggered = get_maps(
+            config_B.input_files,
+            high_resolution_limit=config_B.general.high_resolution_limit,
+        )
+
         diffmap_A, _, _ = prepare_maps(unscaled_dark, unscaled_triggered, config_A)
-        unscaled_dark, unscaled_triggered = get_maps(config_B)
         diffmap_B, _, _ = prepare_maps(unscaled_dark, unscaled_triggered, config_B)
+
         amplitude_similarity = calc_amplitude_similarity(
             diffmap_A.amplitudes, diffmap_B.amplitudes
         )
@@ -308,6 +343,7 @@ def compare_diffmaps(configs, override_dict_A={}, override_dict_B={}, verbose=Fa
             diffmap_A.phases, diffmap_B.phases
         )
         return amplitude_similarity, phase_similarity
+
     out_tuple_list = []
     for i, (config) in enumerate(configs):
 
@@ -321,12 +357,9 @@ def compare_diffmaps(configs, override_dict_A={}, override_dict_B={}, verbose=Fa
             out_tuple = inner_action(merged_config_A, merged_config_B)
         else:
             with redirect_stdout(None):
-                out_tuple = inner_action(
-                    merged_config_A, merged_config_B
-                )
-        out_tuple_list.append((merged_config_A,*out_tuple))
+                out_tuple = inner_action(merged_config_A, merged_config_B)
+        out_tuple_list.append((merged_config_A, *out_tuple))
     return out_tuple_list
-
 
 
 # def compare(loading_function: callable, global_mask: bool, global_overrides: dict = {}):
@@ -392,12 +425,14 @@ def compare_diffmaps(configs, override_dict_A={}, override_dict_B={}, verbose=Fa
 
 from typing import NamedTuple, List, Any
 
+
 class XtrSetup(NamedTuple):
     config_list: List[Any]
     overrides: dict
     xtr_means: List[Any]
     prefix: str
     title: str = ""
+
     def get_saving_data(self, idx: int):
         """Returns the specific config, mean, and formatted name for a given index."""
         cfg = self.config_list[idx]
@@ -410,4 +445,4 @@ class XtrSetup(NamedTuple):
         cfg = self.config_list[idx]
         # mean = self.xtr_means[idx]
         # name = f"{self.prefix}_{cfg['general']['name_machine']}"
-        return cfg, self.overrides 
+        return cfg, self.overrides

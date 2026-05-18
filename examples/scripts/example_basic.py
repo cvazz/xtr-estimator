@@ -67,7 +67,7 @@ def extrapolation():
     if False:
         prediction_tuple = execute_as_main(cfg, save2file=True)
     else:
-        unscaled_dark, unscaled_triggered = get_maps(config)
+        unscaled_dark, unscaled_triggered = get_maps(config.input_files, high_resolution_limit=config.general.high_resolution_limit)
         config.map_processing.diffmap_type = "it_tv"
         diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
         inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)

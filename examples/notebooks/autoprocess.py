@@ -41,7 +41,10 @@ def make_folder_name(config):
     if config.get("prescribe_xtr", None) is not None:
         print(config.get("prescribe_xtr", 1))
         folder_specific = f"{general_config['name_machine']}_{diffmap_type}_xtr_{config['prescribe_xtr']}/"
-        name_machine = general_config["name_machine"] + f"_{diffmap_type}_{config['prescribe_xtr']}"
+        name_machine = (
+            general_config["name_machine"]
+            + f"_{diffmap_type}_{config['prescribe_xtr']}"
+        )
         folder = f"./tmp/{folder_specific}"
         plot_folder = f"./plots/{folder_specific}"
     else:
@@ -55,7 +58,7 @@ def make_folder_name(config):
     os.makedirs(plot_folder, exist_ok=True)
 
     parameters = dict()
-    parameters["name_machine"] =  name_machine
+    parameters["name_machine"] = name_machine
     parameters["name_human"] = general_config["name_human"]
     parameters["folder"] = folder
     parameters["plot_folder"] = plot_folder
@@ -79,9 +82,12 @@ def make_folder_name(config):
 
 
 def extrapolation(config, parameters):
-    unscaled_dark, unscaled_triggered = get_maps(config)
+    unscaled_dark, unscaled_triggered = get_maps(
+        config["input_files"],
+        high_resolution_limit=config["general"]["high_resolution_limit"],
+    )
     diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
-    if config.get("prescribe_xtr", None) is None :
+    if config.get("prescribe_xtr", None) is None:
         inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
         fig, ax, prediction_tuple = plot_extrapolation_estimate(
             diffmap, map_dark, inclusion_mask, config
@@ -105,7 +111,9 @@ def extrapolation(config, parameters):
         rfree_column = find_rfree_column(ds_dark)
         rfree = ds_dark[rfree_column]
     except ValueError:
-        logger.warning(f"No rfree column found in {dataloc_dark}. Generating R-free flags")
+        logger.warning(
+            f"No rfree column found in {dataloc_dark}. Generating R-free flags"
+        )
         rfree = None
     filelocs = save_to_folder(
         diffmap,
@@ -118,9 +126,9 @@ def extrapolation(config, parameters):
     return filelocs[0], prediction_tuple
 
 
-
-
-def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base, add_arguments=[]):
+def combine_and_refine(
+    occ_val, structure1, structure2, parameters, run_id_base, add_arguments=[]
+):
     run_id_comb = f"{run_id_base}_occ{occ_val:.2f}"
 
     base_out = Path(parameters["folder"]).resolve()
@@ -151,8 +159,6 @@ def combine_and_refine(occ_val, structure1, structure2, parameters, run_id_base,
 
     new_st.write_pdb(output_pdb)
 
-
-
     stats, _, _ = run_single_refinement(
         output_pdb,
         parameters["triggered_map"],
@@ -176,24 +182,27 @@ def comprehensive_xtr_analysis(config):
         pdb_name = base_out / f"{run_id_comb}_final.pdb"
 
     add_arguments = []
-    if config['input_files']['cif_file'] is not None:
-        add_arguments += [config['input_files']['cif_file']]
+    if config["input_files"]["cif_file"] is not None:
+        add_arguments += [config["input_files"]["cif_file"]]
     if not pdb_name.exists():
         logger.info("pdb name does not exist, running extrapolation and refinement...")
         datafile, prediction_tuple = extrapolation(config, parameters)
         parameters["xtr_map"] = datafile
         # (parameters, prediction_tuple, datafile)
         if parameters.get("shake_triggered_model", False):
-            # get only file name not directory 
-            triggered_model = str(Path(parameters["triggered_model"]).name)[:-4] + "_minimized.pdb"
+            # get only file name not directory
+            triggered_model = (
+                str(Path(parameters["triggered_model"]).name)[:-4] + "_minimized.pdb"
+            )
             triggered_model_path = Path(parameters["folder"]) / triggered_model
             if not triggered_model_path.exists():
-                logger.info(f"Minimizing triggered model and saving to {triggered_model} in folder {parameters['folder']}...")
+                logger.info(
+                    f"Minimizing triggered model and saving to {triggered_model} in folder {parameters['folder']}..."
+                )
                 cmd = ["phenix.geometry_minimization", parameters["triggered_model"]]
                 log_name = "minimize_geometry" + triggered_model[:-4] + ".log"
                 run_command(cmd, log_name, parameters["folder"])
             parameters["triggered_model"] = triggered_model_path
-
 
         stats, mtz_name, pdb_name = run_single_refinement(
             parameters["triggered_model"],
@@ -201,20 +210,20 @@ def comprehensive_xtr_analysis(config):
             run_id_comb,
             parameters["folder"],
             number_iterations=parameters["number_iterations_refinement"],
-            add_arguments=add_arguments
+            add_arguments=add_arguments,
         )
         parameters["xtr_model"] = pdb_name
     else:
         logger.info("pdb name exists, skipping extrapolation and refinement...")
         parameters["xtr_model"] = pdb_name
 
-    if config['input_files']['map_dark'] == config['input_files']['map_triggered']:
-        logger.info("Dark and triggered models are the same, skipping adding amplitude columns to refinement arguments...")
+    if config["input_files"]["map_dark"] == config["input_files"]["map_triggered"]:
+        logger.info(
+            "Dark and triggered models are the same, skipping adding amplitude columns to refinement arguments..."
+        )
         cols = config["input_files"]["columns_triggered"]
         col_str = f'{cols["amplitude_column"]},{cols["uncertainty_column"]}'
-        add_arguments += [
-            f'refinement.input.xray_data.labels="{col_str}"'
-        ]
+        add_arguments += [f'refinement.input.xray_data.labels="{col_str}"']
 
     comb_ref_xtr = partial(
         combine_and_refine,
@@ -222,7 +231,7 @@ def comprehensive_xtr_analysis(config):
         structure2=str(parameters["xtr_model"]),
         run_id_base="combined_model_vs_triggered_amplitudes",
         parameters=parameters,
-        add_arguments=add_arguments
+        add_arguments=add_arguments,
     )
 
     comb_ref_model = partial(
@@ -231,7 +240,7 @@ def comprehensive_xtr_analysis(config):
         structure2=str(parameters["triggered_model"]),
         run_id_base="author_model_vs_triggered_amplitudes",
         parameters=parameters,
-        add_arguments=add_arguments
+        add_arguments=add_arguments,
     )
     parameters_0it = deepcopy(parameters)
     parameters_0it["number_iterations_refinement"] = 0
@@ -241,7 +250,7 @@ def comprehensive_xtr_analysis(config):
         structure2=str(parameters["xtr_model"]),
         run_id_base="combined_model_vs_triggered_amplitudes_0it",
         parameters=parameters_0it,
-        add_arguments=add_arguments
+        add_arguments=add_arguments,
     )
 
     comb_ref_model_0it = partial(
@@ -250,7 +259,7 @@ def comprehensive_xtr_analysis(config):
         structure2=str(parameters["triggered_model"]),
         run_id_base="author_model_vs_triggered_amplitudes_0it",
         parameters=parameters_0it,
-        add_arguments=add_arguments
+        add_arguments=add_arguments,
     )
     occ_values = np.arange(0.1, 0.9, 0.05)
     if DEBUG:
@@ -265,7 +274,7 @@ def comprehensive_xtr_analysis(config):
             results_xtr = pool.map(comb_ref_xtr, occ_values)
             results_model = pool.map(comb_ref_model, occ_values)
             results_xtr_0it = pool.map(comb_ref_xtr_0it, occ_values)
-            results_model_0it = pool.map(comb_ref_model_0it , occ_values)
+            results_model_0it = pool.map(comb_ref_model_0it, occ_values)
     outcome_tuple = (results_xtr, results_model, parameters)
     outcome_tuple_0it = (results_xtr_0it, results_model_0it, parameters)
     outcome_list = [outcome_tuple, outcome_tuple_0it]
@@ -293,16 +302,18 @@ def evaluate_models(results_xtr, results_model, parameters, name_suffix=""):
     rfree = "R-free: "
     xtr = r"$\alpha$ Xtr-triggered + $(1-\alpha)$ reference"
     author = r"$\alpha$ author-triggered + $(1-\alpha)$ reference"
-    plt.plot(occ_vals_xtr, r_work_xtr, label=rwork+xtr, marker="o", color="blue")
+    plt.plot(occ_vals_xtr, r_work_xtr, label=rwork + xtr, marker="o", color="blue")
     plt.plot(
-        occ_vals_model, r_work_model, label=rwork+author, marker="s", color="red"
+        occ_vals_model, r_work_model, label=rwork + author, marker="s", color="red"
     )
-    plt.plot(occ_vals_xtr, r_free_xtr, label=rfree+xtr, marker="o", color="cyan")
+    plt.plot(occ_vals_xtr, r_free_xtr, label=rfree + xtr, marker="o", color="cyan")
     plt.plot(
-        occ_vals_model, r_free_model, label=rfree+author, marker="s", color="magenta"
+        occ_vals_model, r_free_model, label=rfree + author, marker="s", color="magenta"
     )
     # plt.axvline(x=parameters["best_vacuum"], color="green", linestyle="--", label="Best Vacuum Estimate")
-    plt.legend(title="Refinement of triggered structure amplitudes\n with model composed of:")
+    plt.legend(
+        title="Refinement of triggered structure amplitudes\n with model composed of:"
+    )
     plt.xlabel(r"Occupancy $\alpha$ of Extrapolated State")
     plt.ylabel("R-value")
     fig.savefig(
@@ -441,7 +452,9 @@ def main_single(config):
     results_xtr, results_model, parameters = outcome_list[0]
     evaluate_models(results_xtr, results_model, parameters)
     results_xtr_0it, results_model_0it, parameters_0it = outcome_list[1]
-    evaluate_models(results_xtr_0it, results_model_0it, parameters_0it, name_suffix="_0it")
+    evaluate_models(
+        results_xtr_0it, results_model_0it, parameters_0it, name_suffix="_0it"
+    )
 
 
 def main_double(config):
@@ -464,6 +477,7 @@ def main_double(config):
         exp_occus=expected_occus,
     )
 
+
 def b12_vary(specifier):
 
     config = apply_config_B12_general(0, diff=False)
@@ -476,14 +490,15 @@ def b12_vary(specifier):
     energy = energy_levels[specifier]
     new_config = deepcopy(config)
     # path to string
-    new_config.input_files.map_triggered = str(input_folder / f"3us_{energy}mJ.cm-2_light_FPFree.mtz")
+    new_config.input_files.map_triggered = str(
+        input_folder / f"3us_{energy}mJ.cm-2_light_FPFree.mtz"
+    )
     new_config.input_files.pdb_triggered = str(input_folder / "9S0D.pdb")
     new_config.general.name_machine = f"B12_{energy}mJ"
     new_config = new_config.model_dump()  # convert to dict for multiprocessing
 
-        # configs.append(new_config)
+    # configs.append(new_config)
     return new_config
-
 
 
 def main():
@@ -495,7 +510,7 @@ def main():
     elif args.type == "rsEGFP2":
         config = apply_config_rsEGFP2(add_light=True)
     elif args.type == "vary_energy_b12":
-        config =b12_vary(args.specifier)
+        config = b12_vary(args.specifier)
     else:
         raise ValueError(f"Unknown config type: {args.type}")
 
@@ -518,6 +533,7 @@ def main():
         raise ValueError(f"Unknown diffmap type: {args.diffmap_type}")
 
     main_single(config)
+
 
 DEBUG = False
 if __name__ == "__main__":

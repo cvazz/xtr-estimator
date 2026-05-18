@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional, Literal, Tuple
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
 from .logger import setup_logger
@@ -51,7 +51,7 @@ class BaseModelDictlike(BaseModel):
 
 class ColumnConfig(BaseModelDictlike):
     amplitude_column: str = "F"
-    phase_column: str = "PHI"
+    phase_column: str = "MODEL"
     uncertainty_column: str = "SIGF"
 
 
@@ -159,9 +159,11 @@ class InputFileSettings(BaseModelDictlike):
     columns_diff: DiffColumnConfig = DiffColumnConfig()
     impose_dark_phases: bool = True
     columns_are_ints: bool = False
+    high_resolution_limit: Optional[float] = None
 
 
 class GeneralSettings(BaseModelDictlike):
+    model_config = ConfigDict(populate_by_name=True)
     name_machine: str = "unnamed_experiment"
 
     # We use an alias or a different name for the 'input'
@@ -171,7 +173,7 @@ class GeneralSettings(BaseModelDictlike):
     input_plot_folder: Optional[str] = Field(default=None, alias="plot_folder")
     pdbloc_dark: Optional[str] = None
 
-    map_sampling: int = 3
+    map_sampling: int = 5
     high_resolution_limit: float = 0.1
     comparison_type: str = "triggered"
 
