@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
-from typing import Optional, Literal, Tuple
-from pydantic import BaseModel, Field, computed_field, model_validator
+from typing import Optional, Literal, Tuple, List
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
 from .logger import setup_logger
@@ -51,7 +51,7 @@ class BaseModelDictlike(BaseModel):
 
 class ColumnConfig(BaseModelDictlike):
     amplitude_column: str = "F"
-    phase_column: str = "PHI"
+    phase_column: str = "MODEL"
     uncertainty_column: str = "SIGF"
 
 
@@ -84,14 +84,13 @@ class MaskingSettings(BaseModelDictlike):
         return cls(
             sigma=0.1,
             min_blob_size=0.1,
-            blocking_radius=1.5,
+            blocking_radius=0.1,
             blocking_percentile=1e-5,
-            exclude_solvent=True,
+            exclude_solvent=False,
             dark_size_threshold=0.0,
             exclude_positive_diffmap=True,
             exclude_large_occupancy_outliers=False,
         )
-
 
     @classmethod
     def simple(cls):
@@ -119,6 +118,7 @@ class MaskingSettings(BaseModelDictlike):
             exclude_large_occupancy_outliers=False,
         )
 
+
 # --- Other Grouped Settings ---
 
 
@@ -128,12 +128,16 @@ class MapProcessingSettings(BaseModelDictlike):
     dark_mean_correction: bool = True
     calculate_diffmap_before_f000: bool = False
     preprocessing: bool = False
-    recalculate_map_from_scratch: bool = False
+    recalculate_map_from_scratch: bool = True
+    fill_NA_with_model: bool = False # not yet implemented
+    enforce_kweight: float | None = None
+    enforce_tvweight: float | None = None
+    enforce_ittv_weights: List[float] = [0.001, 0.01, 0.1]
 
 
 class PlotSettings(BaseModelDictlike):
     show_ignored_voxels: bool = True
-    set_ylim: Tuple[float|None, float|None] | None = None
+    set_ylim: Tuple[float | None, float | None] | None = None
     is_composite: bool = False
     std_cutoff: float = 3.0
     solvent_density: float = 0.4
@@ -159,9 +163,11 @@ class InputFileSettings(BaseModelDictlike):
     columns_diff: DiffColumnConfig = DiffColumnConfig()
     impose_dark_phases: bool = True
     columns_are_ints: bool = False
+    high_resolution_limit: Optional[float] = None
 
 
 class GeneralSettings(BaseModelDictlike):
+    model_config = ConfigDict(populate_by_name=True)
     name_machine: str = "unnamed_experiment"
 
     # We use an alias or a different name for the 'input'
@@ -171,7 +177,7 @@ class GeneralSettings(BaseModelDictlike):
     input_plot_folder: Optional[str] = Field(default=None, alias="plot_folder")
     pdbloc_dark: Optional[str] = None
 
-    map_sampling: int = 3
+    map_sampling: int = 5
     high_resolution_limit: float = 0.1
     comparison_type: str = "triggered"
 

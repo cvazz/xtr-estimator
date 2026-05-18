@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from xtr_estimator.configuration import load_homepath
+from xtr_estimator.configuration import load_homepath, merge_settings
 from xtr_estimator.main import execute_as_main
 from xtr_estimator.logger import setup_logger
 
@@ -162,7 +162,7 @@ def apply_config_PL_general(
     )
     return config
 
-def load_all_PL_configs(diff):
+def load_all_PL_configs(diff, global_overrides: dict = {}) -> list:
     ii = 0 
     configs = []
     while True:
@@ -175,6 +175,8 @@ def load_all_PL_configs(diff):
             print(f"Config {ii} is None, stopping.")
 
             break
+        if global_overrides:
+            config = merge_settings(config, global_overrides)
         configs.append(config)
         ii += 1
     return configs
@@ -265,6 +267,27 @@ def apply_config_B12_general(idx: int, diff=False) -> dict:
         input_files=input_files,
     )
     return config
+
+def load_all_B12_configs(diff, global_overrides: dict = {}) -> list:
+    ii = 0 
+    configs = []
+    while True:
+        try:    
+            config = apply_config_B12_general(ii, diff=diff)
+        except ValueError:
+            break
+        except IndexError:
+            break
+
+        if config is None:
+            print(f"Config {ii} is None, stopping.")
+
+            break
+        if global_overrides:
+            config = merge_settings(config, global_overrides)
+        configs.append(config)
+        ii += 1
+    return configs
 
 
 # --- Main Logic ---

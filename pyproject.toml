@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xtr-estimator"
-version = "0.4.0"
+version = "0.4.1"
 description = "estimate extrapolation factors for time resolved crystallography difference maps"
 readme = "README.md"
 authors = [
@@ -18,7 +18,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "meteor-maps >= 0.4.2",
+    "meteor-maps >= 0.5.0",
     "matplotlib >= 3.9.0",
     "jupyterlab >= 4.4.0",
     "pyqt6 >= 6.5.0",

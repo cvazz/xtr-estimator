@@ -1,5 +1,6 @@
 import numpy as np
 import gemmi
+import pandas as pd
 import reciprocalspaceship as rs
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize_scalar
@@ -27,9 +28,19 @@ import warnings
 
 from .masking import support_from_masker
 from .logger import setup_logger
-from .configuration import MapProcessingSettings
+from .configuration import (
+    MapProcessingSettings,
+    InputFileSettings,
+    Settings,
+    GeneralSettings,
+)
 
 logger = setup_logger()
+
+def create_map(dataset: rs.DataSet, columns):
+    return rsmap.Map(
+        dataset, cell=dataset.cell, spacegroup=dataset.spacegroup, **columns
+    )
 
 
 def convert_ints_to_sf2(
@@ -55,44 +66,53 @@ def convert_ints_to_sf2(
     return ds2, cols
 
 
-def get_maps(input_files_dict: dict) -> tuple[rsmap.Map, rsmap.Map]:
-    dataloc_dark = input_files_dict["input_files"]["map_dark"]
-    dataloc_triggered = input_files_dict["input_files"]["map_triggered"]
+def get_maps(
+    input_files_dict: dict | InputFileSettings, high_resolution_limit: float
+) -> tuple[rsmap.Map, rsmap.Map]:
+    if isinstance(input_files_dict, dict):
+        input_files_dict = InputFileSettings(**input_files_dict)
+    # high_resolution_limit = input_files_dict["high_resolution_limit"]
+
+    dataloc_dark = input_files_dict["map_dark"]
+    dataloc_triggered = input_files_dict["map_triggered"]
     ds_triggered = rs.read_mtz(dataloc_triggered)
     ds_dark = rs.read_mtz(dataloc_dark)
 
-    if input_files_dict["input_files"]["columns_are_ints"]:
-        dark_cols = input_files_dict["input_files"]["columns_dark_ints"]
-        triggered_cols = input_files_dict["input_files"]["columns_triggered_ints"]
-        struc = gemmi.read_pdb(input_files_dict["input_files"]["pdb_dark"])
+    if input_files_dict["columns_are_ints"]:
+        dark_cols = input_files_dict["columns_dark_ints"]
+        triggered_cols = input_files_dict["columns_triggered_ints"]
+        struc = gemmi.read_pdb(input_files_dict["pdb_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
-            high_resolution_limit=input_files_dict["general"]["high_resolution_limit"],
+            high_resolution_limit=high_resolution_limit,
         )
         ds_dark, dark_cols = convert_ints_to_sf2(ds_dark, dark_cols, map_dark_comp)
         ds_triggered, triggered_cols = convert_ints_to_sf2(
             ds_triggered, triggered_cols, map_dark_comp
         )
-        input_files_dict["input_files"]["columns_dark"] = dark_cols
-        input_files_dict["input_files"]["columns_triggered"] = triggered_cols
-    elif input_files_dict["input_files"]["columns_dark"]["phase_column"] == "MODEL":
-        input_files_dict["input_files"]["columns_dark"]["phase_column"] = "PHIC"
-        input_files_dict["input_files"]["columns_triggered"]["phase_column"] = "PHIC"
-        struc = gemmi.read_pdb(input_files_dict["input_files"]["pdb_dark"])
+        input_files_dict.columns_dark = dark_cols
+        input_files_dict.columns_triggered = triggered_cols
+    elif input_files_dict.columns_dark["phase_column"] == "MODEL":
+        input_files_dict.columns_dark["phase_column"] = "PHIC"
+        input_files_dict.columns_triggered["phase_column"] = "PHIC"
+        struc = gemmi.read_pdb(input_files_dict["pdb_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
-            high_resolution_limit=input_files_dict["general"]["high_resolution_limit"],
+            high_resolution_limit=high_resolution_limit,
         )
         ds_dark["PHIC"] = map_dark_comp.phases
         ds_triggered["PHIC"] = map_dark_comp.phases
 
-    return get_maps_sf(ds_dark, ds_triggered, input_files_dict)
+    return get_maps_sf(ds_dark, ds_triggered, input_files_dict, high_resolution_limit)
 
 
 def get_maps_sf(
-    ds_dark, ds_triggered, input_files_dict: dict
+    ds_dark: rsmap.Map,
+    ds_triggered: rsmap.Map,
+    input_files_dict: InputFileSettings,
+    high_resolution_limit: float,
 ) -> tuple[rsmap.Map, rsmap.Map]:
-    high_res_limit = input_files_dict["general"]["high_resolution_limit"]
+    high_res_limit = high_resolution_limit
 
     if high_res_limit:
         logger.info(f"Imposing high_resolution_limit: {high_res_limit}")
@@ -101,27 +121,37 @@ def get_maps_sf(
             ds_triggered, high_resolution_limit=high_res_limit
         ).copy()
 
-    dark_columns = input_files_dict["input_files"]["columns_dark"]
-    triggered_columns = input_files_dict["input_files"]["columns_triggered"]
-    if input_files_dict["input_files"]["impose_dark_phases"]:
+    dark_columns = input_files_dict.columns_dark
+    triggered_columns = input_files_dict.columns_triggered
+    if input_files_dict.impose_dark_phases:
         ds_triggered.loc[:, triggered_columns["phase_column"]] = ds_dark[
             dark_columns["phase_column"]
         ]
-    unscaled_dark = rsmap.Map(ds_dark, **dark_columns)
-    unscaled_triggered = rsmap.Map(ds_triggered, **triggered_columns)
+    unscaled_dark = create_map(ds_dark, dark_columns)
+    unscaled_triggered = create_map(ds_triggered, triggered_columns)
+    dark_na_rows = pd.isna(unscaled_dark[input_files_dict.columns_dark.amplitude_column])
+    triggered_na_rows = pd.isna(unscaled_triggered[input_files_dict.columns_triggered.amplitude_column])
+    if dark_na_rows.any():
+        unscaled_dark = unscaled_dark[~dark_na_rows]
+
+    if triggered_na_rows.any():
+        unscaled_triggered = unscaled_triggered[~triggered_na_rows]
+
     return unscaled_dark, unscaled_triggered
 
 
 def check_highres_limit(
-    map_dark: rsmap.Map, map_triggered: rsmap.Map, general_config: dict
+    map_dark: rsmap.Map,
+    map_triggered: rsmap.Map,
+    general_config: dict | GeneralSettings,
 ):
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
-    high_res_limit = float(np.round(max(dmin_dark, dmin_triggered), 1))
+    high_res_limit = float((max(dmin_dark, dmin_triggered)))
 
     if not np.isclose(dmin_dark, dmin_triggered):
         logger.warning(
-            f"Different resolution limits in dark and triggered maps: {dmin_dark:.2f} A vs {dmin_triggered:.2f} A"
+            f"Different resolution limits in dark and triggered maps: {dmin_dark:.4f} A vs {dmin_triggered:.4f} A"
         )
         general_config["high_resolution_limit"] = high_res_limit
         map_dark = cut_resolution(map_dark, high_resolution_limit=high_res_limit)  # type: ignore
@@ -146,6 +176,10 @@ def calculate_diffmaps(
     diffmap_mode: str = "kweighted",
     parameters: dict = None,
 ):
+
+    if diffmap_mode== "vanilla":
+        return compute_difference_map(derivative=map_triggered, native=map_dark)
+
     if parameters is None:
         parameters = {}
 
@@ -173,10 +207,9 @@ def calculate_diffmaps(
         opt_k = parameters.get("k_weight")
         opt_tv = parameters.get("tv_weight", None)
 
-        # Mirroring original logic: fallback to kweighted if tv_weight is missing
-        if opt_tv is None and diffmap_mode in ["tv", "it_tv"]:
-            logger.warning("tv_weight missing, falling back to kweighted mode.")
-            diffmap_mode = "kweighted"
+
+        if opt_tv is None and diffmap_mode in ["tv"]:
+            raise ValueError("Specify both tv_weight and k_weight when using tv")
 
         logger.info(
             f"Using provided k_weight: {opt_k}, tv_weight: {opt_tv}, diffmap_mode: {diffmap_mode}"
@@ -231,21 +264,24 @@ def calculate_diffmaps(
                 with open(meta_loc, "wb") as f:
                     pickle.dump(meta, f)
         else:  # it_tv
-            tv_weights_to_scan = (
-                [opt_tv * 1e-1, opt_tv, opt_tv * 10] if opt_tv is not None else None
-            )
+            # if parameters.get("ittv_weights") is None:
+            #     tv_weights_to_scan = (
+            #     [opt_tv * 1e-1, opt_tv, opt_tv * 10] if opt_tv is not None else None
+            # )
+            # else:
+            tv_weights_to_scan =  parameters["ittv_weights"]
             denoiser = IterativeTvDenoiser(
                 tv_weights_to_scan=tv_weights_to_scan,
                 max_iterations=20,
                 verbose=True,
             )
-            map_set.derivative, it_tv_metadata = denoiser(
+            diffmap, it_tv_metadata = denoiser(
                 derivative=map_set.derivative, native=map_set.native
             )
 
-            diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
-                kweight_mode=weight_mode, kweight_parameter=opt_k, mapset=map_set
-            )
+            # diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
+            #     kweight_mode=weight_mode, kweight_parameter=opt_k, mapset=map_set
+            # )
             logger.warning(
                 "it_tv mode does not currently support parameter loading/saving; running with default parameters."
             )
@@ -338,17 +374,19 @@ def calculate_diffmaps_deprecated(
     return final_map
 
 
-def get_meta_loc(general_config):
+def get_meta_loc(general_config: dict | GeneralSettings):
     output_folder = general_config["output_folder"]
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     evaluation_path_basis = output_folder + general_config["name_machine"] + "/"
     os.makedirs(evaluation_path_basis, exist_ok=True)
-    name = f"{general_config['high_resolution_limit']*10}"
+    name = f"{general_config['high_resolution_limit']*10:.0f}"
     return evaluation_path_basis, name
 
 
-def get_meta_loc_diffmap(general_config, processing_config):
+def get_meta_loc_diffmap(
+    general_config: dict | GeneralSettings, processing_config: MapProcessingSettings
+):
     binary_string = processing_dict_2_binary(processing_config)
     evaluation_path_basis, name = get_meta_loc(general_config)
     name = f"diffmap_config_{general_config['high_resolution_limit']*10:.0f}_{binary_string}.pkl"
@@ -361,7 +399,7 @@ def combined_diffmap_calc(
     map_triggered,
     map_dark_comp,
     processing_config: dict | MapProcessingSettings,
-    general_config=None,
+    general_config: dict | GeneralSettings,
 ) -> rsmap.Map:
     if isinstance(processing_config, dict):
         processing_config = MapProcessingSettings(**processing_config)
@@ -371,7 +409,7 @@ def combined_diffmap_calc(
     if (
         filepath.exists()
         and not processing_config["recalculate_map_from_scratch"]
-        and (Path().stat().st_mtime - filepath.stat().st_mtime) < 24 * 3600
+        and (Path().stat().st_mtime - filepath.stat().st_mtime) < 30 * 24 * 3600
     ):
         logger.info(f"Loading preprocessed maps from {filepath}")
         diffmap = rsmap.Map.read_mtz_file(filepath)
@@ -384,23 +422,18 @@ def combined_diffmap_calc(
     meta_loc = get_meta_loc_diffmap(general_config, processing_config)
     logger.info(f"Meta file for diffmap parameters will be saved to: {meta_loc}")
 
-    match diffmap_type:
-        case "kweighted" | "it_tv" | "tv":
-            diffmap = calculate_diffmaps(
-                map_dark,
-                map_triggered,
-                map_dark_comp,
-                meta_loc,
-                diffmap_mode=diffmap_type,
-            )
-        case "vanilla":
-            diffmap = compute_difference_map(derivative=map_triggered, native=map_dark)
-        case _:
-            raise ValueError(f"Unknown diffmap_type: {diffmap_type}")
-            # logger.warning(
-            #     f"Unknown or unset diffmap_type: {diffmap_type}, defaulting to vanilla"
-            # )
-            diffmap = compute_difference_map(derivative=map_triggered, native=map_dark)
+    diffmap = calculate_diffmaps(
+        map_dark,
+        map_triggered,
+        map_dark_comp,
+        meta_loc,
+        diffmap_mode=diffmap_type,
+        parameters = {
+            "k_weight": processing_config.enforce_kweight,
+            "tv_weight": processing_config.enforce_tvweight,
+            "ittv_weights": processing_config.enforce_ittv_weights,
+        }
+    )
 
     diffmap.write_mtz(filepath)
     logger.info(f"Saved diffmap to {filepath}")
@@ -721,14 +754,18 @@ def processing_dict_2_binary(processing_dict) -> str:
 
     for key in key_names:
         binary_string += "1" if processing_dict[key] else "0"
-    if len(binary_string) != 3:
-        raise ValueError(
-            f"Expected 3 entries, got {len(binary_string)}. Keys were: {key_names}"
-        )
+    if "fill_NA_with_model":
+        binary_string += "1" if processing_dict["fill_NA_with_model"] else ""
+    # if len(binary_string) != 3:
+    #     raise ValueError(
+    #         f"Expected 3 entries, got {len(binary_string)}. Keys were: {key_names}"
+    #     )
     return binary_string
 
 
-def diffmap_file_name(processing_config, general_config):
+def diffmap_file_name(
+    processing_config: MapProcessingSettings, general_config: GeneralSettings
+):
     binary_string = processing_dict_2_binary(processing_config)
     evaluation_path_basis, name = get_meta_loc(general_config)
     diffmap_type = processing_config["diffmap_type"]
@@ -790,7 +827,7 @@ def get_calculated_dark_map(config: dict, struc=None) -> rsmap.Map:
         struc = gemmi.read_pdb(config["input_files"]["pdb_dark"])
     return gemmi_structure_to_calculated_map(
         struc,
-        high_resolution_limit=config["general"]["high_resolution_limit"],
+        high_resolution_limit=config["general"]["high_resolution_limit"]-0.01,
         map_sampling=config["general"]["map_sampling"],
     )
 
@@ -807,23 +844,126 @@ def apply_autoshift(map_to_shift: rsmap.Map, map_dark_comp: rsmap.Map, config: d
     return shifted_map, zero_freq
 
 
+def fill_na_with_model(
+    map_to_fill: rsmap.Map,
+    map_reference: rsmap.Map,
+    amplitude_threshold: float = 1.0,
+    high_resolution_limit: float = None,
+) -> rsmap.Map:
+    """Fill NaN values and missing reflections in `map_to_fill` using `map_reference`.
+
+    Handles each of the three crystallographic columns individually
+    (amplitudes F, uncertainties SIGF, phases PHI). Column names may differ
+    between the two maps; the reference is translated into the target's
+    column names before filling.
+
+    If the reference map has no SIGF column, SIGF is estimated as 10% of F.
+    Reference rows with F < `amplitude_threshold` are dropped before filling.
+    """
+    # ---------- 1. Resolve column names on both sides ----------
+    f_col_tgt = map_to_fill.amplitude_column_name
+    phi_col_tgt = map_to_fill.phase_column_name
+    sigf_col_tgt = map_to_fill.uncertainties_column_name
+
+    f_col_ref = map_reference.amplitude_column_name
+    phi_col_ref = map_reference.phase_column_name
+
+    # ---------- 2. Build a translated reference with target's column names ----------
+    ref_translated = pd.DataFrame(index=map_reference.index)
+    ref_translated[f_col_tgt] = map_reference[f_col_ref].values
+    ref_translated[phi_col_tgt] = map_reference[phi_col_ref].values
+
+    if map_reference.has_uncertainties:
+        sigf_col_ref = map_reference.uncertainties_column_name
+        ref_translated[sigf_col_tgt] = map_reference[sigf_col_ref].values
+    else:
+        ref_translated[sigf_col_tgt] = 0.10 * map_reference[f_col_ref].values
+
+    ref_translated = ref_translated[list(map_to_fill.columns)]
+
+    # ---------- 2b. Drop low-amplitude reference rows ----------
+    n_before = len(ref_translated)
+    ref_translated = ref_translated[ref_translated[f_col_tgt] >= amplitude_threshold]
+    ref_translated = ref_translated.drop(index=(0, 0, 0), errors="ignore")
+    if high_resolution_limit is not None:
+        ref_translated = ref_translated[map_reference.compute_dHKL() >= high_resolution_limit]  # type: ignore
+    n_after = len(ref_translated)
+
+    n_dropped = n_before - n_after
+    if n_dropped:
+        logger.warning(
+            f"Dropped {n_dropped} reference reflections with "
+            f"{f_col_tgt} < {amplitude_threshold}.",
+            stacklevel=2,
+        )
+
+    # ---------- 3. Index bookkeeping ----------
+    complete_rows = (
+        map_to_fill.amplitudes.notna()
+        & map_to_fill.phases.notna()
+        & map_to_fill.uncertainties.notna()
+    )
+    fill_idx = set(map_to_fill.index[complete_rows])
+    ref_idx = set(ref_translated.index)
+
+    missing_in_fill = list(ref_idx - fill_idx)  # rows to add
+    missing_in_ref = fill_idx - ref_idx  # rows we can't fill
+    
+
+    if missing_in_ref:
+        logger.warning(
+            f"Found {len(missing_in_ref)} indices in `map_to_fill` that are "
+            f"missing from `map_reference` (or filtered out by threshold). "
+            f"These cannot be filled.",
+            stacklevel=2,
+        )
+
+    filled_map = map_to_fill.copy()
+    plt.plot(1/map_to_fill.compute_dHKL(), map_to_fill.amplitudes, ".")
+    # ---------- 4. Add rows entirely missing from the target ----------
+    if missing_in_fill:
+        filled_map = pd.concat([filled_map, ref_translated.loc[missing_in_fill]])
+        # Re-sort so the MultiIndex is lexsorted again — silences the
+        # PerformanceWarning from .update() below and speeds up later .loc calls.
+        filled_map = filled_map.sort_index()
+        logger.info(f"Replaced {len(ref_translated.loc[missing_in_fill])} NaN values.")
+
+    # ---------- 5. Fill NaN cells in pre-existing rows ----------
+    filled_map.update(ref_translated, overwrite=False)
+    filled_map.cell = (
+        map_to_fill.cell
+    )  # ensure cell info is preserved for later .loc calls
+    filled_map.spacegroup = map_to_fill.spacegroup
+    new_bits = filled_map.loc[missing_in_fill]
+    plt.yscale("log")
+    plt.xscale("log")
+    plt.plot(1/new_bits.compute_dHKL(), new_bits.amplitudes, ".")
+    plt.show()
+
+    return filled_map
+
+
 def prepare_maps(
     unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
 ) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map]:
 
-    check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
-    map_dark_comp = get_calculated_dark_map(config)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
-        map_triggered = scale_maps(
-            reference_map=map_dark_comp, map_to_scale=unscaled_triggered
-        )
-
     processing_config = config["map_processing"]
     diffmap_first = processing_config["calculate_diffmap_before_f000"]
     dark_mean_correction = processing_config["dark_mean_correction"]
+
+    check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
+    map_dark_comp = get_calculated_dark_map(config)
+
+    # with warnings.catch_warnings():
+    # warnings.simplefilter("ignore")
+    map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
+    map_triggered = scale_maps(
+        reference_map=map_dark_comp, map_to_scale=unscaled_triggered
+    )
+
+    if processing_config["fill_NA_with_model"]:
+        raise NotImplementedError("fill_NA_with_model is not yet implemented.")
+    
 
     if diffmap_first or not dark_mean_correction:
         diffmap = combined_diffmap_calc(
@@ -863,7 +1003,7 @@ def get_map_dark(config: dict) -> rsmap.Map:
         logger.warning(f"Phase column {phase_col} not found. Using calculated phases.")
         ds_dark[phase_col] = map_dark_comp.phases
 
-    map_dark = rsmap.Map(ds_dark, **config["input_files"]["columns_dark"])
+    map_dark = create_map(ds_dark, config["input_files"]["columns_dark"])
     map_dark.canonicalize_amplitudes()
     map_dark = cut_resolution(
         map_dark, high_resolution_limit=config["general"]["high_resolution_limit"]
@@ -884,7 +1024,7 @@ def get_maps_diff(config, map_dark=None):
         map_dark = copy.deepcopy(map_dark)
 
     ds_diff = rs.read_mtz(config["input_files"]["map_diff"])
-    diffmap = rsmap.Map(ds_diff, **config["input_files"]["columns_diff"])
+    diffmap = create_map(ds_diff, config["input_files"]["columns_diff"])
     dmin_diffmap = np.min(diffmap.compute_dHKL())
     dmin = max(dmin_diffmap, config["general"]["high_resolution_limit"])
     map_dark = cut_resolution(map_dark, high_resolution_limit=dmin)

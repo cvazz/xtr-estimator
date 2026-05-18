@@ -52,16 +52,18 @@ def parse_extra_args(extra_args: List[str]) -> dict:
 
 
 def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None, prescribe_mask=None) -> tuple:
-    if config["general"]["comparison_type"] == "diff":
+    if isinstance(config, dict):
+        config = Settings(**config)  # This will validate and convert to Settings
+    if config.general.comparison_type == "diff":
         map_dark, diffmap = get_maps_diff(config, map_dark=map_dark_base)
-    elif config["general"]["comparison_type"] == "triggered":
+    elif config.general.comparison_type == "triggered":
         if map_dark_base is not None:
             logger.warning("map_dark_base provided but will be ignored in triggered mode.")
-        unscaled_dark, unscaled_triggered = get_maps(config)
+        unscaled_dark, unscaled_triggered = get_maps(config.input_files, high_resolution_limit=config.general.high_resolution_limit)
         diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
     else:
         raise ValueError(
-            f"Unknown comparison type: {config['general']['comparison_type']}"
+            f"Unknown comparison type: {config.general.comparison_type}"
         )
     if prescribe_mask is None:
         inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
