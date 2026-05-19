@@ -275,13 +275,13 @@ def calculate_diffmaps(
                 max_iterations=20,
                 verbose=True,
             )
-            diffmap, it_tv_metadata = denoiser(
+            map_set.derivative, it_tv_metadata = denoiser(
                 derivative=map_set.derivative, native=map_set.native
             )
 
-            # diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
-            #     kweight_mode=weight_mode, kweight_parameter=opt_k, mapset=map_set
-            # )
+            diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
+                kweight_mode=weight_mode, kweight_parameter=0, mapset=map_set
+            )
             logger.warning(
                 "it_tv mode does not currently support parameter loading/saving; running with default parameters."
             )
