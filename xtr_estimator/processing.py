@@ -37,6 +37,7 @@ from .configuration import (
 
 logger = setup_logger()
 
+
 def create_map(dataset: rs.DataSet, columns):
     return rsmap.Map(
         dataset, cell=dataset.cell, spacegroup=dataset.spacegroup, **columns
@@ -129,8 +130,12 @@ def get_maps_sf(
         ]
     unscaled_dark = create_map(ds_dark, dark_columns)
     unscaled_triggered = create_map(ds_triggered, triggered_columns)
-    dark_na_rows = pd.isna(unscaled_dark[input_files_dict.columns_dark.amplitude_column])
-    triggered_na_rows = pd.isna(unscaled_triggered[input_files_dict.columns_triggered.amplitude_column])
+    dark_na_rows = pd.isna(
+        unscaled_dark[input_files_dict.columns_dark.amplitude_column]
+    )
+    triggered_na_rows = pd.isna(
+        unscaled_triggered[input_files_dict.columns_triggered.amplitude_column]
+    )
     if dark_na_rows.any():
         unscaled_dark = unscaled_dark[~dark_na_rows]
 
@@ -168,6 +173,22 @@ def check_highres_limit(
     return map_dark, map_triggered
 
 
+def iterative_tv_denoising(map_set: DiffMapSet, tv_weights_to_scan: list):
+    denoiser = IterativeTvDenoiser(
+        tv_weights_to_scan=tv_weights_to_scan,
+        max_iterations=20,
+        verbose=True,
+    )
+    map_set.derivative, it_tv_metadata = denoiser(
+        derivative=map_set.derivative, native=map_set.native
+    )
+
+    diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
+        kweight_mode="fixed", kweight_parameter=0.0, mapset=map_set
+    )
+    return diffmap
+
+
 def calculate_diffmaps(
     map_dark: rsmap.Map,
     map_triggered: rsmap.Map,
@@ -177,7 +198,7 @@ def calculate_diffmaps(
     parameters: dict = None,
 ):
 
-    if diffmap_mode== "vanilla":
+    if diffmap_mode == "vanilla":
         return compute_difference_map(derivative=map_triggered, native=map_dark)
 
     if parameters is None:
@@ -206,7 +227,6 @@ def calculate_diffmaps(
         weight_mode = WeightMode.fixed
         opt_k = parameters.get("k_weight")
         opt_tv = parameters.get("tv_weight", None)
-
 
         if opt_tv is None and diffmap_mode in ["tv"]:
             raise ValueError("Specify both tv_weight and k_weight when using tv")
@@ -264,24 +284,7 @@ def calculate_diffmaps(
                 with open(meta_loc, "wb") as f:
                     pickle.dump(meta, f)
         else:  # it_tv
-            # if parameters.get("ittv_weights") is None:
-            #     tv_weights_to_scan = (
-            #     [opt_tv * 1e-1, opt_tv, opt_tv * 10] if opt_tv is not None else None
-            # )
-            # else:
-            tv_weights_to_scan =  parameters["ittv_weights"]
-            denoiser = IterativeTvDenoiser(
-                tv_weights_to_scan=tv_weights_to_scan,
-                max_iterations=20,
-                verbose=True,
-            )
-            map_set.derivative, it_tv_metadata = denoiser(
-                derivative=map_set.derivative, native=map_set.native
-            )
-
-            diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
-                kweight_mode=weight_mode, kweight_parameter=0, mapset=map_set
-            )
+            diffmap = iterative_tv_denoising(map_set, parameters["ittv_weights"])
             logger.warning(
                 "it_tv mode does not currently support parameter loading/saving; running with default parameters."
             )
@@ -428,11 +431,11 @@ def combined_diffmap_calc(
         map_dark_comp,
         meta_loc,
         diffmap_mode=diffmap_type,
-        parameters = {
+        parameters={
             "k_weight": processing_config.enforce_kweight,
             "tv_weight": processing_config.enforce_tvweight,
             "ittv_weights": processing_config.enforce_ittv_weights,
-        }
+        },
     )
 
     diffmap.write_mtz(filepath)
@@ -575,7 +578,7 @@ def calculate_rho_bulk(
     solvent_mask: np.ndarray,
     cell: gemmi.UnitCell,
     spacegroup: gemmi.SpaceGroup,
-    hs_limit: float,
+    dmin: float,
     plot: bool = False,
 ):
     """
@@ -589,7 +592,7 @@ def calculate_rho_bulk(
 
         # 2. Convert to reciprocal map
         map_temp = rsmap.Map.from_3d_numpy_map(
-            temp_data, cell=cell, spacegroup=spacegroup, high_resolution_limit=hs_limit
+            temp_data, cell=cell, spacegroup=spacegroup, high_resolution_limit=dmin
         )  # type: ignore
 
         # 3. Align indices to experimental map
@@ -597,7 +600,8 @@ def calculate_rho_bulk(
         map_temp = map_temp.loc[shared_indices]
 
         # 4. Return the low-resolution scaling error
-        return error_metric_for_scaling(map_temp, map_exp)
+        # low-resolution -> dmin >= 4
+        return error_metric_for_scaling(map_temp, map_exp, dmin=4)
 
     logger.info("Running 1D bounded optimization for rho_bulk...")
 
@@ -644,7 +648,7 @@ def estimate_absolute_densities(
     map_exp: rsmap.Map,
     map_model: rsmap.Map,
     pdb_file: str,
-    hs_limit: float,
+    dmin: float,
     map_sampling: int = 3,
     plot: bool = True,
 ):
@@ -681,7 +685,7 @@ def estimate_absolute_densities(
         solvent_mask=solvent_mask,
         cell=cell,
         spacegroup=spacegroup,
-        hs_limit=hs_limit,
+        dmin=dmin,
         plot=plot,
     )
     share_solvent = np.mean(solvent_mask)
