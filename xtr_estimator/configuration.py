@@ -3,7 +3,10 @@ from pathlib import Path
 from typing import Optional, Literal, Tuple, List
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import yaml
+try: 
+    import yaml
+except ImportError:
+    yaml = None
 from .logger import setup_logger
 import typer
 
@@ -77,7 +80,8 @@ class MaskingSettings(BaseModelDictlike):
     exclude_solvent: Optional[bool] = None
     dark_size_threshold: Optional[float] = None
     exclude_positive_diffmap: Optional[bool] = None
-    exclude_large_occupancy_outliers: Optional[bool] = False
+    exclude_large_occupancy_outliers: Optional[float] = False
+    
 
     @classmethod
     def no_mask(cls):
@@ -124,11 +128,11 @@ class MaskingSettings(BaseModelDictlike):
 
 class MapProcessingSettings(BaseModelDictlike):
     diffmap_type: Literal["tv", "it_tv", "vanilla", "kweighted"] = "tv"
-    simple_dark_correction: bool = True
+    simple_dark_correction: bool = False
     dark_mean_correction: bool = True
     calculate_diffmap_before_f000: bool = False
     preprocessing: bool = False
-    recalculate_map_from_scratch: bool = True
+    recalculate_map_from_scratch: bool = False
     fill_NA_with_model: bool = False # not yet implemented
     enforce_kweight: float | None = None
     enforce_tvweight: float | None = None
@@ -146,6 +150,8 @@ class PlotSettings(BaseModelDictlike):
     save_to_file: bool = True
     markersize: Optional[float] = 1
     comparison_to_reference: Optional[bool] = False
+    binary_background: bool = False
+    legend: bool = True
 
 
 class InputFileSettings(BaseModelDictlike):
@@ -222,6 +228,14 @@ class Settings(BaseSettings):
     def sync_general_paths(self) -> "Settings":
         # Injection: Copy pdb_dark from input_files into general
         self.general.pdbloc_dark = self.input_files.pdb_dark
+        return self
+
+    @model_validator(mode="after")
+    def ensure_dark_mean(self) -> "Settings":
+        # Injection: Copy pdb_dark from input_files into general
+        if self.plot.binary_background:
+            self.map_processing.dark_mean_correction = True
+            self.map_processing.simple_dark_correction = False
         return self
 
     @model_validator(mode="after")

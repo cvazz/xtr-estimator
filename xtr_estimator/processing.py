@@ -381,10 +381,8 @@ def get_meta_loc(general_config: dict | GeneralSettings):
     output_folder = general_config["output_folder"]
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    evaluation_path_basis = output_folder + general_config["name_machine"] + "/"
-    os.makedirs(evaluation_path_basis, exist_ok=True)
     name = f"{general_config['high_resolution_limit']*10:.0f}"
-    return evaluation_path_basis, name
+    return output_folder, name
 
 
 def get_meta_loc_diffmap(
@@ -522,7 +520,8 @@ def generate_masks(
     mask_grid.set_size(nx, ny, nz)
 
     masker = gemmi.SolventMasker(gemmi.AtomicRadiiSet.VanDerWaals)
-    masker.rprobe = 1.4
+    masker.rprobe = 1.1
+    masker.rshrink = 0.9
     masker.put_mask_on_int8_grid(mask_grid, model)
 
     # Gemmi returns 1 for protein, 0 for solvent.
@@ -546,9 +545,20 @@ def error_metric_for_scaling(
 
     # Calculate optimal scaling using meteor's internal function
     map_scaled = scale_maps(reference_map=map_temp, map_to_scale=map_exp)
-
+    indices = map_scaled.index.difference(map_temp.index.values)
+    indices = np.asarray(indices)
+    if len(indices) > 10:
+        ignored_indices = map_scaled.index.difference(map_temp.index)
+        logger.warning(
+            f"Ignoring {len(ignored_indices)} indices in map_scaled but not in map_temp"
+        )
+    map_scaled = map_scaled.loc[
+        map_temp.index
+    ]  # Align indices to ensure proper comparison
     # Compute Mean Absolute Error
-    absdiff = np.abs((map_scaled.amplitudes - map_temp.amplitudes)[low_res_idx])
+    absdiff = np.abs(
+        (map_scaled.amplitudes - map_temp.amplitudes)[low_res_idx.to_numpy()]
+    )
     # absdiff = np.abs(f_obs - f_model_scaled)
     return np.mean(absdiff)
 
@@ -670,8 +680,11 @@ def estimate_absolute_densities(
     protein_mask, solvent_mask = generate_masks(pdb_file, grid_shape, cell, spacegroup)
     # protein_mask = ~support_from_masker(pdb_file, map_dark_comp_np.shape)
 
+    try:
     # 3. Calculate rho_atom (Mean shift in the protein region)
-    rho_atom_shift = calculate_rho_atom(map_exp_np, map_model_np, protein_mask)
+        rho_atom_shift = calculate_rho_atom(map_exp_np, map_model_np, protein_mask)
+    except IndexError as e:
+        raise e
 
     logger.info(
         f"Estimated rho_atom offset (mean shift inside protein): {rho_atom_shift:.5f}"
@@ -703,20 +716,85 @@ def estimate_absolute_densities(
     }
 
 
+def get_name_pkl(
+    general_config: GeneralSettings, input_file_name: str, amplitude_column: str
+):
+    evaluation_path_basis, name = get_meta_loc(general_config)
+    filename = input_file_name.split("/")[-1].split(".")[0]
+    dmin = general_config["high_resolution_limit"]
+    name = f"{filename}_{amplitude_column}_{dmin}.pkl"
+    return evaluation_path_basis + name
+
+# def enforce_f000(map_in, zero_freq):
+#     zero_row = {
+#             map_in.amplitude_column_name: zero_freq,
+#             map_in.phase_column_name: 0,
+#     }
+#     if map_in.has_uncertainties:
+#         zero_row[map_in.uncertainties_column_name]= zero_freq / 10,
+#     map_in.loc[(0, 0, 0)] = zero_row
+#     return map_in
+def fix_hkl_dtypes(ds):
+    names = ds.index.names
+    ds = ds.reset_index().infer_mtz_dtypes()
+    return ds.set_index(list(names))
+
+def enforce_f000(map_in, zero_freq):
+    if map_in.has_uncertainties:
+        map_in.loc[(0, 0, 0)] = {
+            map_in.amplitude_column_name: zero_freq,
+            map_in.phase_column_name: 0,
+            map_in.uncertainties_column_name: zero_freq / 10,
+        }
+    else:
+        map_in.loc[(0, 0, 0)] = {
+            map_in.amplitude_column_name: zero_freq,
+            map_in.phase_column_name: 0,
+    }
+    map_in = fix_hkl_dtypes(map_in)
+
+    return map_in
+
+
 def autoshift_rsmap(
     map_in: rsmap.Map,
     general_config: dict,
+    input_file_name: str,
+    amplitude_column: str,
     map_dark_comp: rsmap.Map | None = None,
-    ignore_mask: np.ndarray | bool = False,
+    diagnostic_plots: bool = False,
+):
+    solvent_loc = get_name_pkl(general_config, input_file_name, amplitude_column)
+    if os.path.exists(solvent_loc):
+        with open(solvent_loc, "rb") as f:
+            estimates = pickle.load(f)
+    else:
+        estimates = calculate_autoshift_rsmap(
+            map_in=map_in,
+            general_config=general_config,
+            map_dark_comp=map_dark_comp,
+            diagnostic_plots=diagnostic_plots,
+        )
+        with open(solvent_loc, "wb") as f:
+            pickle.dump(estimates, f)
+    map_in = enforce_f000(map_in, estimates["f000"])
+    return map_in, estimates["rho_bulk"]
+
+
+def calculate_autoshift_rsmap(
+    map_in: rsmap.Map,
+    general_config: dict,
+    map_dark_comp: rsmap.Map | None = None,
     diagnostic_plots: bool = False,
 ) -> tuple[rsmap.Map, float]:
+
     if map_dark_comp is None:
         struc = gemmi.read_pdb(general_config["pdbloc_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
             high_resolution_limit=general_config["high_resolution_limit"],
-            map_sampling=general_config["map_sampling"],
         )
+
     estimates = estimate_absolute_densities(
         map_in,
         map_dark_comp,
@@ -736,15 +814,16 @@ def autoshift_rsmap(
         log_txt += f"and combined rho (rho_atom + share_solvent * rho_bulk) ({estimates['rho_comb']:.4f} "
         log_txt += f"{estimates['rho_atom']:.4f}+{estimates['share_solvent']:.4f}*{estimates['rho_bulk']:.4f}) "
         logger.info(log_txt)
+    return estimates
 
-    zero_freq = estimates["f000"]
-    map_in.loc[(0, 0, 0)] = {
-        map_in.amplitude_column_name: zero_freq,
-        map_in.phase_column_name: 0,
-        map_in.uncertainties_column_name: zero_freq / 10,
-    }
-    # map_in.write_mtz("autoshifted_map.mtz")
-    return map_in, zero_freq
+    # zero_freq = estimates["f000"]
+    # map_in.loc[(0, 0, 0)] = {
+    #     map_in.amplitude_column_name: zero_freq,
+    #     map_in.phase_column_name: 0,
+    #     map_in.uncertainties_column_name: zero_freq / 10,
+    # }
+    # # map_in.write_mtz("autoshifted_map.mtz")
+    # return map_in, estimates['rho_bulk']
 
 
 def processing_dict_2_binary(processing_dict) -> str:
@@ -779,9 +858,12 @@ def diffmap_file_name(
 def shift_mean(
     map_dark: rsmap.Map,
     map_triggered: rsmap.Map,
-    config: dict,
+    config: Settings,
     map_dark_comp: rsmap.Map,
 ) -> tuple[rsmap.Map, rsmap.Map, float, float]:
+
+    solvent_dark = np.nan
+    solvent_triggered = np.nan
     if config["map_processing"]["simple_dark_correction"]:
         processing_config = copy.deepcopy(config["map_processing"])
         processing_config["preprocessing"] = True
@@ -798,31 +880,28 @@ def shift_mean(
             map_sampling=config["general"]["map_sampling"]
         )
         diffmap_larger = np.abs(diffmap_temp_np) > 1 * diffmap_temp_np.std()
-        logger.info(f"Diffmap std: {diffmap_temp_np.std():.3f}")
-        logger.info(
-            f"diffmap larger voxel count: {np.sum(diffmap_larger)/diffmap_larger.size}"
-        )
-        map_dark, zero_freq_dark = autoshift_rsmap_old(
-            map_dark, config["general"], map_dark_comp
-        )
-        logger.info("calculating autoshift for triggered map... with extra mask")
-        map_triggered, zero_freq_triggered = autoshift_rsmap_old(
+        map_dark, _ = autoshift_rsmap_old(map_dark, config["general"], map_dark_comp)
+        map_triggered, _ = autoshift_rsmap_old(
             map_triggered, config["general"], map_dark_comp, diffmap_larger
         )
-        logger.info("calculating autoshift for triggered map... done")
     else:
-        map_dark, zero_freq_dark = autoshift_rsmap(
-            map_dark, config["general"], map_dark_comp
+        map_dark, solvent_dark = autoshift_rsmap(
+            map_dark,
+            config["general"],
+            map_dark_comp=map_dark_comp,
+            input_file_name=config.input_files.map_dark,
+            amplitude_column=config.input_files.columns_dark.amplitude_column,
         )
         logger.info("calculating autoshift for triggered map... with extra mask")
-        map_triggered, zero_freq_triggered = autoshift_rsmap(
+        map_triggered, solvent_triggered = autoshift_rsmap(
             map_triggered,
             config["general"],
-            map_dark_comp,  # diffmap_larger
+            map_dark_comp=map_dark_comp,
+            input_file_name=config.input_files.map_triggered,
+            amplitude_column=config.input_files.columns_triggered.amplitude_column,
         )
-        logger.info("calculating autoshift for triggered map... done")
         diffmap_temp = None
-    return map_dark, map_triggered, zero_freq_dark, zero_freq_triggered
+    return map_dark, map_triggered, solvent_dark, solvent_triggered
 
 
 def get_calculated_dark_map(config: dict, struc=None) -> rsmap.Map:
@@ -831,20 +910,40 @@ def get_calculated_dark_map(config: dict, struc=None) -> rsmap.Map:
         struc = gemmi.read_pdb(config["input_files"]["pdb_dark"])
     return gemmi_structure_to_calculated_map(
         struc,
-        high_resolution_limit=config["general"]["high_resolution_limit"]-0.01,
-        map_sampling=config["general"]["map_sampling"],
+        high_resolution_limit=config["general"]["high_resolution_limit"] - 0.01,
     )
 
 
-def apply_autoshift(map_to_shift: rsmap.Map, map_dark_comp: rsmap.Map, config: dict):
+def apply_autoshift(
+    map_to_shift: rsmap.Map, map_dark_comp: rsmap.Map, config: dict, is_triggered: bool
+) -> tuple[rsmap.Map, float]:
     """Unified logic for applying simple (old) or standard autoshift."""
-    use_old = config["map_processing"]["simple_dark_correction"]
-    shift_func = autoshift_rsmap_old if use_old else autoshift_rsmap
-
     # We deepcopy to avoid mutating the original map if needed (as seen in get_map_dark)
-    shifted_map, zero_freq = shift_func(
-        copy.deepcopy(map_to_shift), config["general"], map_dark_comp
-    )
+    if config["map_processing"]["simple_dark_correction"]:
+        shifted_map, _ = autoshift_rsmap_old(
+            copy.deepcopy(map_to_shift),
+            config["general"],
+            map_dark_comp=map_dark_comp,
+        )
+
+        zero_freq = np.nan  # old method doesn't reliably estimate zero frequency
+    else:
+        if is_triggered:
+            kwargs = dict(
+                input_file_name=config.input_files.map_triggered,
+                amplitude_column=config.input_files.columns_triggered.amplitude_column,
+            )
+        else:
+            kwargs = dict(
+                input_file_name=config.input_files.map_dark,
+                amplitude_column=config.input_files.columns_dark.amplitude_column,
+            )
+        shifted_map, zero_freq = autoshift_rsmap(
+            copy.deepcopy(map_to_shift),
+            config["general"],
+            map_dark_comp=map_dark_comp,
+            **kwargs,
+        )
     return shifted_map, zero_freq
 
 
@@ -912,7 +1011,6 @@ def fill_na_with_model(
 
     missing_in_fill = list(ref_idx - fill_idx)  # rows to add
     missing_in_ref = fill_idx - ref_idx  # rows we can't fill
-    
 
     if missing_in_ref:
         logger.warning(
@@ -923,7 +1021,7 @@ def fill_na_with_model(
         )
 
     filled_map = map_to_fill.copy()
-    plt.plot(1/map_to_fill.compute_dHKL(), map_to_fill.amplitudes, ".")
+    plt.plot(1 / map_to_fill.compute_dHKL(), map_to_fill.amplitudes, ".")
     # ---------- 4. Add rows entirely missing from the target ----------
     if missing_in_fill:
         filled_map = pd.concat([filled_map, ref_translated.loc[missing_in_fill]])
@@ -941,7 +1039,9 @@ def fill_na_with_model(
     new_bits = filled_map.loc[missing_in_fill]
     plt.yscale("log")
     plt.xscale("log")
-    plt.plot(1/new_bits.compute_dHKL(), new_bits.amplitudes, ".")
+    plt.ylabel("Amplitude")
+    plt.xlabel("1/distance (1/Å)")
+    plt.plot(1 / new_bits.compute_dHKL(), new_bits.amplitudes, ".")
     plt.show()
 
     return filled_map
@@ -966,9 +1066,21 @@ def prepare_maps(
     )
 
     if processing_config["fill_NA_with_model"]:
-        raise NotImplementedError("fill_NA_with_model is not yet implemented.")
-    
+        # raise NotImplementedError("fill_NA_with_model is not yet implemented.")
+        map_dark = fill_na_with_model(
+            map_dark,
+            map_dark_comp,
+            high_resolution_limit=config["general"]["high_resolution_limit"],
+        )
+        map_triggered = fill_na_with_model(
+            map_triggered,
+            map_dark_comp,
+            high_resolution_limit=config["general"]["high_resolution_limit"],
+        )
+        scale_maps(reference_map=map_dark_comp, map_to_scale=map_dark)
+        scale_maps(reference_map=map_dark_comp, map_to_scale=map_triggered)
 
+    solvent_level = np.nan
     if diffmap_first or not dark_mean_correction:
         diffmap = combined_diffmap_calc(
             map_dark,
@@ -978,10 +1090,12 @@ def prepare_maps(
             general_config=config["general"],
         )
         if diffmap_first and dark_mean_correction:
-            map_dark, _ = apply_autoshift(map_dark, map_dark_comp, config)
+            map_dark, solvent_level = apply_autoshift(
+                map_dark, map_dark_comp, config, is_triggered=False
+            )
 
     elif not diffmap_first:
-        map_dark, map_triggered, _, _ = shift_mean(
+        map_dark, map_triggered, solvent_level, _ = shift_mean(
             map_dark, map_triggered, config, map_dark_comp
         )
         diffmap = combined_diffmap_calc(
@@ -993,8 +1107,9 @@ def prepare_maps(
         )
     else:
         raise ValueError("Invalid configuration for diffmap calculation")
+    info = {"solvent_level": solvent_level}
 
-    return diffmap, map_dark, map_triggered
+    return diffmap, map_dark, map_triggered, info
 
 
 def get_map_dark(config: dict) -> rsmap.Map:
@@ -1015,18 +1130,16 @@ def get_map_dark(config: dict) -> rsmap.Map:
     map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=map_dark)
 
     # Apply the same logic used in prepare_maps
+    bulk_solvent_level = np.nan
     if config["map_processing"]["dark_mean_correction"]:
-        map_dark, _ = apply_autoshift(map_dark, map_dark_comp, config)
+        map_dark, bulk_solvent_level = apply_autoshift(
+            map_dark, map_dark_comp, config, is_triggered=False
+        )
 
-    return map_dark
+    return map_dark, bulk_solvent_level
 
 
-def get_maps_diff(config, map_dark=None):
-    if map_dark is None:
-        map_dark = get_map_dark(config)
-    else:
-        map_dark = copy.deepcopy(map_dark)
-
+def get_maps_diff(config, map_dark):
     ds_diff = rs.read_mtz(config["input_files"]["map_diff"])
     diffmap = create_map(ds_diff, config["input_files"]["columns_diff"])
     dmin_diffmap = np.min(diffmap.compute_dHKL())
@@ -1034,3 +1147,29 @@ def get_maps_diff(config, map_dark=None):
     map_dark = cut_resolution(map_dark, high_resolution_limit=dmin)
     diffmap = cut_resolution(diffmap, high_resolution_limit=dmin)
     return map_dark, diffmap
+
+
+def get_maps_diff_and_dark(config, map_dark=None):
+
+    estimates = None
+    if map_dark is not None:
+        logger.info("hi")
+        solvent_loc = get_name_pkl(
+            config.general,
+            config.input_files.map_dark,
+            config.input_files.columns_dark.amplitude_column,
+        )
+        if os.path.exists(solvent_loc):
+            logger.info("here")
+            map_dark = copy.deepcopy(map_dark)
+            with open(solvent_loc, "rb") as f:
+                estimates = pickle.load(f)
+            map_dark = enforce_f000(map_dark, estimates["f000"])
+            bulk_solvent_level = estimates["rho_bulk"]
+            logger.info(bulk_solvent_level)
+
+    if estimates is None:
+        map_dark, bulk_solvent_level = get_map_dark(config)
+
+    map_dark, diffmap = get_maps_diff(config, map_dark)
+    return map_dark, diffmap, {"solvent_level": bulk_solvent_level}

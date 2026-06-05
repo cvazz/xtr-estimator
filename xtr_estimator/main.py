@@ -1,12 +1,17 @@
 import typer
-import yaml
+from .rho_floor import get_rho_floor
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 from typing import List, Optional, Literal
 from pathlib import Path
 import matplotlib.pyplot as plt
 
 from .masking import make_inclusion_mask
-from .processing import get_maps, get_maps_diff, prepare_maps
-from .estimation import plot_extrapolation_estimate
+from .processing import get_maps, get_maps_diff_and_dark, prepare_maps
+from .estimation import plot_extrapolation_estimate, plot_extrapolation_estimate_binary
 from .configuration import Settings, dump_config, merge_dicts
 from .logger import setup_logger
 
@@ -50,32 +55,51 @@ def parse_extra_args(extra_args: List[str]) -> dict:
     return overrides
 
 
-
-def xtr_logic(config: Settings | dict, ax=None, map_dark_base=None, prescribe_mask=None) -> tuple:
+def xtr_logic(
+    config: Settings | dict, ax=None, map_dark_base=None, prescribe_mask=None
+) -> tuple:
     if isinstance(config, dict):
         config = Settings(**config)  # This will validate and convert to Settings
     if config.general.comparison_type == "diff":
-        map_dark, diffmap = get_maps_diff(config, map_dark=map_dark_base)
+        map_dark, diffmap, information = get_maps_diff_and_dark(config, map_dark=map_dark_base)
+        logger.info(f"information: {information}")
     elif config.general.comparison_type == "triggered":
         if map_dark_base is not None:
-            logger.warning("map_dark_base provided but will be ignored in triggered mode.")
-        unscaled_dark, unscaled_triggered = get_maps(config.input_files, high_resolution_limit=config.general.high_resolution_limit)
-        diffmap, map_dark, _ = prepare_maps(unscaled_dark, unscaled_triggered, config)
-    else:
-        raise ValueError(
-            f"Unknown comparison type: {config.general.comparison_type}"
+            logger.warning(
+                "map_dark_base provided but will be ignored in triggered mode."
+            )
+        unscaled_dark, unscaled_triggered = get_maps(
+            config.input_files,
+            high_resolution_limit=config.general.high_resolution_limit,
         )
+        diffmap, map_dark, _, information = prepare_maps(
+            unscaled_dark, unscaled_triggered, config
+        )
+    else:
+        raise ValueError(f"Unknown comparison type: {config.general.comparison_type}")
     if prescribe_mask is None:
         inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
     else:
         inclusion_mask = prescribe_mask
 
-    fig, ax, prediction_tuple = plot_extrapolation_estimate(
-        diffmap, map_dark, inclusion_mask, config, ax=ax
-    )
+    if config.plot.binary_background:
+        print(information)
+        rho_floor = get_rho_floor(map_dark, diffmap, config, information['solvent_level'])
+        import numpy as np
+        print(np.unique(rho_floor))
+        fig, ax, prediction_tuple = plot_extrapolation_estimate_binary(
+            diffmap, map_dark, inclusion_mask, config=config, ax=ax, rho_floor=rho_floor
+        )
+    else:
+        fig, ax, prediction_tuple = plot_extrapolation_estimate(
+            diffmap, map_dark, inclusion_mask, config=config, ax=ax
+        )
     return fig, ax, prediction_tuple, map_dark
 
-def execute_as_main(config: Settings | dict, save2file: bool = False, show: bool = True) -> None:
+
+def execute_as_main(
+    config: Settings | dict, save2file: bool = False, show: bool = True
+) -> None:
     """The actual processing logic."""
     # Ensure we have regular dict
     fig, _, prediction_tuple, _ = xtr_logic(config, ax=None)
@@ -113,7 +137,7 @@ def parse_settings(
                 final_payload = yaml.safe_load(f) or {}
     elif data_yaml:
         typer.secho(
-            f"⚠️  Warning: YAML file {data_yaml} not found. Proceeding with defaults and CLI flags.",
+            f" Warning: YAML file {data_yaml} not found. Proceeding with defaults and CLI flags.",
             fg=typer.colors.YELLOW,
         )
 
