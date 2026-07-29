@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from .masking import make_inclusion_mask
 from .processing import get_maps, get_maps_diff_and_dark, prepare_maps
-from .estimation import plot_extrapolation_estimate, plot_extrapolation_estimate_binary
+from .estimation import plot_extrapolation_estimate
 from .configuration import Settings, dump_config, merge_dicts
 from .logger import setup_logger
 
@@ -54,6 +54,33 @@ def parse_extra_args(extra_args: List[str]) -> dict:
 
     return overrides
 
+def process_config(
+    config: Settings | dict, ax=None, map_dark_base=None, prescribe_mask=None
+) -> tuple:
+    if isinstance(config, dict):
+        config = Settings(**config)  # This will validate and convert to Settings
+    if config.general.comparison_type == "diff":
+        map_dark, diffmap, information = get_maps_diff_and_dark(config, map_dark=map_dark_base)
+        logger.info(f"information: {information}")
+        print(diffmap, map_dark)
+        print(diffmap, map_dark)
+    elif config.general.comparison_type == "triggered":
+        if map_dark_base is not None:
+            logger.warning(
+                "map_dark_base provided but will be ignored in triggered mode."
+            )
+        unscaled_dark, unscaled_triggered = get_maps(
+            config.input_files,
+            high_resolution_limit=config.general.high_resolution_limit,
+        )
+        diffmap, map_dark, _, information = prepare_maps(
+            unscaled_dark, unscaled_triggered, config
+        )
+        print(diffmap, map_dark)
+    else:
+        raise ValueError(f"Unknown comparison type: {config.general.comparison_type}")
+    inclusion_mask = make_inclusion_mask(diffmap, map_dark, config)
+    return diffmap, map_dark, inclusion_mask, information
 
 def xtr_logic(
     config: Settings | dict, ax=None, map_dark_base=None, prescribe_mask=None
@@ -87,9 +114,10 @@ def xtr_logic(
         rho_floor = get_rho_floor(map_dark, diffmap, config, information['solvent_level'])
         import numpy as np
         print(np.unique(rho_floor))
-        fig, ax, prediction_tuple = plot_extrapolation_estimate_binary(
-            diffmap, map_dark, inclusion_mask, config=config, ax=ax, rho_floor=rho_floor
-        )
+        # fig, ax, prediction_tuple = plot_extrapolation_estimate_binary(
+        #     diffmap, map_dark, inclusion_mask, config=config, ax=ax, rho_floor=rho_floor
+        # )
+        raise NotImplementedError("Binary background plotting with rho_floor is not implemented yet.")
     else:
         fig, ax, prediction_tuple = plot_extrapolation_estimate(
             diffmap, map_dark, inclusion_mask, config=config, ax=ax

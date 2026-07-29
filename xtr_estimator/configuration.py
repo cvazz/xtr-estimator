@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Optional, Literal, Tuple, List
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-try: 
+
+try:
     import yaml
 except ImportError:
     yaml = None
@@ -81,7 +82,6 @@ class MaskingSettings(BaseModelDictlike):
     dark_size_threshold: Optional[float] = None
     exclude_positive_diffmap: Optional[bool] = None
     exclude_large_occupancy_outliers: Optional[float] = False
-    
 
     @classmethod
     def no_mask(cls):
@@ -133,25 +133,87 @@ class MapProcessingSettings(BaseModelDictlike):
     calculate_diffmap_before_f000: bool = False
     preprocessing: bool = False
     recalculate_map_from_scratch: bool = False
-    fill_NA_with_model: bool = False # not yet implemented
+    fill_NA_with_model: bool = False  # not yet implemented
     enforce_kweight: float | None = None
     enforce_tvweight: float | None = None
     enforce_ittv_weights: List[float] = [0.001, 0.01, 0.1]
 
 
+class FontMultipliers(BaseModelDictlike):
+    title: float = 1.05
+    label: float = 1.05
+    tick: float = 0.85
+    legend: float = 0.95
+    annotation: float = 1.0  # the (0.95,0.95) stats box + rho labels
+    rhos: float = 1.0  #  rho labels
+    outside_title: float = 2.0
+
+class Solvent(BaseModelDictlike):
+    large: Tuple[float, float] = (0.25, 0.10)
+    small: Tuple[float, float] = (0.95, 0.65)
+
+class Aesthetics(BaseModelDictlike):
+    scale: float = 1.0
+    base_fontsize: float = 8.0
+    font: FontMultipliers = FontMultipliers()
+
+    markersize: float = 3.5
+    ignored_markersize_frac: float = 0.5
+    optimal_markerarea: float = 200.0
+    linewidth: float = 1.1
+    grid_linewidth: float = 0.5
+
+    point_alpha: float = 0.5  # moved from plot_points
+    fill_alpha: float = 0.18
+    anno_alpha: float = 0.8
+    grid_alpha: float = 0.55
+
+    textwidth_pt: float = 469.75502
+    width_fraction: float = 1.0
+    ratio: float = 1.
+    panels_per_row: int = 1  # fallback; overridden by the figure-owner
+    legend_ncol: int = 3
+
+    solvent: Solvent = Solvent()
+
+    def resolved(self) -> dict:
+        s = self.scale
+        base = self.base_fontsize * s
+        return {
+            "title": base * self.font.title,
+            "label": base * self.font.label,
+            "tick": base * self.font.tick,
+            "legend": base * self.font.legend,
+            "outside_title": base * self.font.outside_title,
+            "annotation": base * self.font.annotation,
+            "rhos": base * self.font.rhos,
+            "markersize": self.markersize * s,
+            "optimal_markerarea": self.optimal_markerarea * s ,
+            "ignored_markersize": self.markersize * self.ignored_markersize_frac * s,
+            "linewidth": self.linewidth * s,
+            "grid_linewidth": self.grid_linewidth * s,
+        }
+
+    # def figure_size(self, n_panels: int) -> tuple[float, float]:
+    #     width = self.textwidth_pt * self.width_fraction / 72.27
+    #     return (width* self.panel_aspect, (width / n_panels) * self.panel_aspect)
+    def figure_size(self, panels_per_row=None, n_rows=1):
+        width = self.textwidth_pt * self.width_fraction / 72.27
+        return (width, (width / panels_per_row) * self.ratio * n_rows)
+
+
 class PlotSettings(BaseModelDictlike):
     show_ignored_voxels: bool = True
     set_ylim: Tuple[float | None, float | None] | None = None
-    is_composite: bool = False
     std_cutoff: float = 3.0
     solvent_density: float = 0.4
     minimum_datapoints: int = 10
     show_plot: bool = True
     save_to_file: bool = True
-    markersize: Optional[float] = 1
-    comparison_to_reference: Optional[bool] = False
     binary_background: bool = False
     legend: bool = True
+    aesthetics: Aesthetics = Aesthetics()
+    show_rho: bool = False
 
 
 class InputFileSettings(BaseModelDictlike):

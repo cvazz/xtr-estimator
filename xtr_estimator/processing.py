@@ -68,21 +68,21 @@ def convert_ints_to_sf2(
 
 
 def get_maps(
-    input_files_dict: dict | InputFileSettings, high_resolution_limit: float
+    input_files_config: dict | InputFileSettings, high_resolution_limit: float
 ) -> tuple[rsmap.Map, rsmap.Map]:
-    if isinstance(input_files_dict, dict):
-        input_files_dict = InputFileSettings(**input_files_dict)
+    if isinstance(input_files_config, dict):
+        input_files_config = InputFileSettings(**input_files_config)
     # high_resolution_limit = input_files_dict["high_resolution_limit"]
 
-    dataloc_dark = input_files_dict["map_dark"]
-    dataloc_triggered = input_files_dict["map_triggered"]
+    dataloc_dark = input_files_config.map_dark
+    dataloc_triggered = input_files_config["map_triggered"]
     ds_triggered = rs.read_mtz(dataloc_triggered)
     ds_dark = rs.read_mtz(dataloc_dark)
 
-    if input_files_dict["columns_are_ints"]:
-        dark_cols = input_files_dict["columns_dark_ints"]
-        triggered_cols = input_files_dict["columns_triggered_ints"]
-        struc = gemmi.read_pdb(input_files_dict["pdb_dark"])
+    if input_files_config["columns_are_ints"]:
+        dark_cols = input_files_config["columns_dark_ints"]
+        triggered_cols = input_files_config["columns_triggered_ints"]
+        struc = gemmi.read_pdb(input_files_config["pdb_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
             high_resolution_limit=high_resolution_limit,
@@ -91,12 +91,12 @@ def get_maps(
         ds_triggered, triggered_cols = convert_ints_to_sf2(
             ds_triggered, triggered_cols, map_dark_comp
         )
-        input_files_dict.columns_dark = dark_cols
-        input_files_dict.columns_triggered = triggered_cols
-    elif input_files_dict.columns_dark["phase_column"] == "MODEL":
-        input_files_dict.columns_dark["phase_column"] = "PHIC"
-        input_files_dict.columns_triggered["phase_column"] = "PHIC"
-        struc = gemmi.read_pdb(input_files_dict["pdb_dark"])
+        input_files_config.columns_dark = dark_cols
+        input_files_config.columns_triggered = triggered_cols
+    elif input_files_config.columns_dark["phase_column"] == "MODEL":
+        input_files_config.columns_dark["phase_column"] = "PHIC"
+        input_files_config.columns_triggered["phase_column"] = "PHIC"
+        struc = gemmi.read_pdb(input_files_config["pdb_dark"])
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
             high_resolution_limit=high_resolution_limit,
@@ -104,7 +104,7 @@ def get_maps(
         ds_dark["PHIC"] = map_dark_comp.phases
         ds_triggered["PHIC"] = map_dark_comp.phases
 
-    return get_maps_sf(ds_dark, ds_triggered, input_files_dict, high_resolution_limit)
+    return get_maps_sf(ds_dark, ds_triggered, input_files_config, high_resolution_limit)
 
 
 def get_maps_sf(
@@ -271,7 +271,7 @@ def calculate_diffmaps(
 
     elif diffmap_mode in ["tv", "it_tv"]:
         # Execute the chosen method with a single parameterized call
-        if diffmap_mode == "tv":
+        if diffmap_mode == "tv" or parameters.get("ittv_weights", None) is None:
             diffmap, meta = compute_meteor_difference_map(
                 map_set,
                 kweight_mode=weight_mode,
@@ -283,8 +283,12 @@ def calculate_diffmaps(
             if weight_mode == WeightMode.optimize and meta_loc != "":
                 with open(meta_loc, "wb") as f:
                     pickle.dump(meta, f)
-        else:  # it_tv
-            diffmap = iterative_tv_denoising(map_set, parameters["ittv_weights"])
+            ittv_weights= np.array([0.8, 1, 1.3, 1.55,1.7, 2])*meta.tv_weight_optimization.optimal_parameter_value
+# [ 0.8, 1, 1.3, 1.55, 1.7, 2]
+        else:
+            ittv_weights = parameters["ittv_weights"]
+        if diffmap_mode=="it_tv":
+            diffmap = iterative_tv_denoising(map_set, ittv_weights)
             logger.warning(
                 "it_tv mode does not currently support parameter loading/saving; running with default parameters."
             )
@@ -689,8 +693,6 @@ def estimate_absolute_densities(
     logger.info(
         f"Estimated rho_atom offset (mean shift inside protein): {rho_atom_shift:.5f}"
     )
-    rho_atom = map_model_np.mean()
-
     # 4. Calculate rho_bulk (Optimized solvent density)
     rho_bulk = calculate_rho_bulk(
         map_exp=map_exp,
@@ -1049,7 +1051,7 @@ def fill_na_with_model(
 
 def prepare_maps(
     unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
-) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map]:
+) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map, dict]:
 
     processing_config = config["map_processing"]
     diffmap_first = processing_config["calculate_diffmap_before_f000"]
