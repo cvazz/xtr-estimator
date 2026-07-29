@@ -690,6 +690,8 @@ def estimate_absolute_densities(
     except IndexError as e:
         raise e
 
+    rho_atom = map_model_np.mean()
+
     logger.info(
         f"Estimated rho_atom offset (mean shift inside protein): {rho_atom_shift:.5f}"
     )
