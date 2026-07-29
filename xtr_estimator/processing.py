@@ -103,7 +103,7 @@ def get_maps(
         )
         ds_dark["PHIC"] = map_dark_comp.phases
         ds_triggered["PHIC"] = map_dark_comp.phases
-
+    
     return get_maps_sf(ds_dark, ds_triggered, input_files_config, high_resolution_limit)
 
 
@@ -152,7 +152,7 @@ def check_highres_limit(
 ):
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
-    high_res_limit = float((max(dmin_dark, dmin_triggered)))
+    high_res_limit = float(np.ceil(max(dmin_dark, dmin_triggered) * 10) / 10)
 
     if not np.isclose(dmin_dark, dmin_triggered):
         logger.warning(
@@ -912,10 +912,11 @@ def get_calculated_dark_map(config: dict, struc=None) -> rsmap.Map:
     """Helper to generate the reference calculated map from structure."""
     if struc is None:
         struc = gemmi.read_pdb(config["input_files"]["pdb_dark"])
-    return gemmi_structure_to_calculated_map(
+    struc_map =  gemmi_structure_to_calculated_map(
         struc,
         high_resolution_limit=config["general"]["high_resolution_limit"] - 0.01,
     )
+    return cut_resolution(struc_map, config["general"]["high_resolution_limit"])
 
 
 def apply_autoshift(
@@ -1059,7 +1060,9 @@ def prepare_maps(
     diffmap_first = processing_config["calculate_diffmap_before_f000"]
     dark_mean_correction = processing_config["dark_mean_correction"]
 
+    print("High resolution limit:", config["general"]["high_resolution_limit"])
     check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
+    print(config["general"]["high_resolution_limit"])
     map_dark_comp = get_calculated_dark_map(config)
 
     # with warnings.catch_warnings():
