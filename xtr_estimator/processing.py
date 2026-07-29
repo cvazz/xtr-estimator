@@ -916,7 +916,7 @@ def get_calculated_dark_map(config: dict, struc=None) -> rsmap.Map:
         struc,
         high_resolution_limit=config["general"]["high_resolution_limit"] - 0.01,
     )
-    return cut_resolution(struc_map, config["general"]["high_resolution_limit"])
+    return cut_resolution(struc_map, high_resolution_limit=config["general"]["high_resolution_limit"])
 
 
 def apply_autoshift(
