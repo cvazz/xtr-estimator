@@ -152,17 +152,17 @@ def check_highres_limit(
 ):
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
-    high_res_limit = float(np.ceil(max(dmin_dark, dmin_triggered) * 10) / 10)
+    high_res_limit = float(np.ceil(max(dmin_dark, dmin_triggered) * 1000) / 1000)
 
-    if not np.isclose(dmin_dark, dmin_triggered):
-        logger.warning(
-            f"Different resolution limits in dark and triggered maps: {dmin_dark:.4f} A vs {dmin_triggered:.4f} A"
-        )
-        general_config["high_resolution_limit"] = high_res_limit
-        map_dark = cut_resolution(map_dark, high_resolution_limit=high_res_limit)  # type: ignore
-        map_triggered = cut_resolution(
-            map_triggered, high_resolution_limit=high_res_limit
-        )  # type: ignore
+    # if not np.isclose(dmin_dark, dmin_triggered):
+        # logger.warning(
+        #     f"Different resolution limits in dark and triggered maps: {dmin_dark:.4f} A vs {dmin_triggered:.4f} A"
+        # )
+    general_config["high_resolution_limit"] = high_res_limit
+    map_dark = cut_resolution(map_dark, high_resolution_limit=high_res_limit)  # type: ignore
+    map_triggered = cut_resolution(
+        map_triggered, high_resolution_limit=high_res_limit
+    )  # type: ignore
 
     if not np.isclose(high_res_limit, general_config["high_resolution_limit"]):
         prev_dmin = general_config["high_resolution_limit"]
@@ -798,7 +798,6 @@ def calculate_autoshift_rsmap(
             struc,
             high_resolution_limit=general_config["high_resolution_limit"],
         )
-
     estimates = estimate_absolute_densities(
         map_in,
         map_dark_comp,
@@ -1060,9 +1059,7 @@ def prepare_maps(
     diffmap_first = processing_config["calculate_diffmap_before_f000"]
     dark_mean_correction = processing_config["dark_mean_correction"]
 
-    print("High resolution limit:", config["general"]["high_resolution_limit"])
-    check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
-    print(config["general"]["high_resolution_limit"])
+    unscaled_dark, unscaled_triggered = check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
     map_dark_comp = get_calculated_dark_map(config)
 
     # with warnings.catch_warnings():
@@ -1071,6 +1068,7 @@ def prepare_maps(
     map_triggered = scale_maps(
         reference_map=map_dark_comp, map_to_scale=unscaled_triggered
     )
+
 
     if processing_config["fill_NA_with_model"]:
         # raise NotImplementedError("fill_NA_with_model is not yet implemented.")
