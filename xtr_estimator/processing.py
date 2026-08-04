@@ -1056,19 +1056,18 @@ def assert_same_high_res_limit(map_dark: rsmap.Map, map_triggered: rsmap.Map, ma
     dmin_dark = np.min(map_dark.compute_dHKL())
     dmin_triggered = np.min(map_triggered.compute_dHKL())
     dmin_dark_comp = np.min(map_dark_comp.compute_dHKL())
-    shape_dark = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
-    shape_triggered = map_triggered.to_3d_numpy_map(map_sampling=map_sampling)
-    shape_dark_comp = map_dark_comp.to_3d_numpy_map(map_sampling=map_sampling)
+    shape_dark = map_dark.to_3d_numpy_map(map_sampling=map_sampling).shape
+    shape_triggered = map_triggered.to_3d_numpy_map(map_sampling=map_sampling).shape
+    shape_dark_comp = map_dark_comp.to_3d_numpy_map(map_sampling=map_sampling).shape
 
-    if not shape_dark == shape_triggered == shape_dark_comp:
+    if not (shape_dark == shape_triggered == shape_dark_comp):
         raise ValueError(
             f"High-resolution limits do not match: "
-            f"map_dark: {dmin_dark:.2f}, ({shape_dark.shape}) "
-            f"map_triggered: {dmin_triggered:.2f}, ({shape_triggered.shape}) "
-            f"map_dark_comp: {dmin_dark_comp:.2f}, ({shape_dark_comp.shape}) "
+            f"map_dark: {dmin_dark:.2f}, ({shape_dark}) "
+            f"map_triggered: {dmin_triggered:.2f}, ({shape_triggered}) "
+            f"map_dark_comp: {dmin_dark_comp:.2f}, ({shape_dark_comp}) "
             "Please ensure all maps are cut to the same resolution."
         )
-
 def prepare_maps(
     unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
 ) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map, dict]:
