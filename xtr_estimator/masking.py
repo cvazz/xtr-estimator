@@ -8,7 +8,7 @@ from scipy.ndimage import convolve
 from meteor import rsmap
 from .logger import setup_logger
 from .configuration import Settings, MaskingSettings
-from .utils import grid_shape_for, map_to_array
+from .utils import  map_to_array
 
 logger = setup_logger()
 
