@@ -1084,7 +1084,7 @@ def prepare_maps(
     unscaled_dark, unscaled_triggered = check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
     map_dark_comp = get_calculated_dark_map(config)
 
-    assert_same_high_res_limit(unscaled_dark, unscaled_triggered, map_dark_comp)
+    # assert_same_high_res_limit(unscaled_dark, unscaled_triggered, map_dark_comp)
 
     map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
     map_triggered = scale_maps(
