@@ -8,6 +8,7 @@ from meteor import rsmap
 from .configuration import Settings, PlotSettings
 
 from .logger import setup_logger
+from .utils import map_to_array
 
 logger = setup_logger()
 
@@ -501,7 +502,7 @@ def plot_extrapolation_estimate(
 ) -> tuple[Figure | None, Axes | None, tuple[float, float]]:
     sampling = config["general"]["map_sampling"]
     diffmap_np = diffmap.to_3d_numpy_map(map_sampling=sampling)
-    map_dark_np = map_dark.to_3d_numpy_map(map_sampling=sampling)
+    map_dark_np = map_to_array(map_dark, diffmap_np.shape)
 
     stats = _calculate_statistics(
         diffmap_np,
