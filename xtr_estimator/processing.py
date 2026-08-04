@@ -153,13 +153,15 @@ def check_highres_limit(
 ):
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
-    high_res_limit = float(np.ceil(max(dmin_dark, dmin_triggered) * 1000) / 1000)
+    factor = 100
+    
+    high_res_limit = float(np.ceil(max(dmin_dark, dmin_triggered) * factor) / factor)
+
 
     # if not np.isclose(dmin_dark, dmin_triggered):
         # logger.warning(
         #     f"Different resolution limits in dark and triggered maps: {dmin_dark:.4f} A vs {dmin_triggered:.4f} A"
         # )
-    general_config["high_resolution_limit"] = high_res_limit
     map_dark = cut_resolution(map_dark, high_resolution_limit=high_res_limit)  # type: ignore
     map_triggered = cut_resolution(
         map_triggered, high_resolution_limit=high_res_limit
@@ -1051,7 +1053,7 @@ def fill_na_with_model(
 
     return filled_map
 
-def assert_same_high_res_limit(map_dark: rsmap.Map, map_triggered: rsmap.Map, map_dark_comp: rsmap.Map, map_sampling: int = 3):
+def assert_same_high_res_limit(map_dark: rsmap.Map, map_triggered: rsmap.Map, map_dark_comp: rsmap.Map, map_sampling: int = 5):
     """Ensure that all maps have the same high-resolution limit."""
     dmin_dark = np.min(map_dark.compute_dHKL())
     dmin_triggered = np.min(map_triggered.compute_dHKL())
@@ -1063,9 +1065,9 @@ def assert_same_high_res_limit(map_dark: rsmap.Map, map_triggered: rsmap.Map, ma
     if not (shape_dark == shape_triggered == shape_dark_comp):
         raise ValueError(
             f"High-resolution limits do not match: "
-            f"map_dark: {dmin_dark:.2f}, ({shape_dark}) "
-            f"map_triggered: {dmin_triggered:.2f}, ({shape_triggered}) "
-            f"map_dark_comp: {dmin_dark_comp:.2f}, ({shape_dark_comp}) "
+            f"map_dark: {dmin_dark:.5f}, ({shape_dark}) "
+            f"map_triggered: {dmin_triggered:.5f}, ({shape_triggered}) "
+            f"map_dark_comp: {dmin_dark_comp:.5f}, ({shape_dark_comp}) "
             "Please ensure all maps are cut to the same resolution."
         )
 def prepare_maps(
