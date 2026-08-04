@@ -10,6 +10,7 @@ import copy
 
 import pickle
 import os
+import time
 
 from meteor import compute_meteor_difference_map, compute_meteor_phaseboost_map
 from meteor import rsmap
@@ -117,10 +118,10 @@ def get_maps_sf(
 
     if high_res_limit:
         logger.info(f"Imposing high_resolution_limit: {high_res_limit}")
-        ds_dark = cut_resolution(ds_dark, high_resolution_limit=high_res_limit).copy()
+        ds_dark = cut_resolution(ds_dark, high_resolution_limit=high_res_limit)
         ds_triggered = cut_resolution(
             ds_triggered, high_resolution_limit=high_res_limit
-        ).copy()
+        )
 
     dark_columns = input_files_dict.columns_dark
     triggered_columns = input_files_dict.columns_triggered
@@ -414,7 +415,7 @@ def combined_diffmap_calc(
     if (
         filepath.exists()
         and not processing_config["recalculate_map_from_scratch"]
-        and (Path().stat().st_mtime - filepath.stat().st_mtime) < 30 * 24 * 3600
+        and (time.time() - filepath.stat().st_mtime) < 30 * 24 * 3600
     ):
         logger.info(f"Loading preprocessed maps from {filepath}")
         diffmap = rsmap.Map.read_mtz_file(filepath)
@@ -1050,6 +1051,20 @@ def fill_na_with_model(
 
     return filled_map
 
+def assert_same_high_res_limit(map_dark: rsmap.Map, map_triggered: rsmap.Map, map_dark_comp: rsmap.Map):
+    """Ensure that all maps have the same high-resolution limit."""
+    dmin_dark = np.min(map_dark.compute_dHKL())
+    dmin_triggered = np.min(map_triggered.compute_dHKL())
+    dmin_dark_comp = np.min(map_dark_comp.compute_dHKL())
+
+    if not (np.isclose(dmin_dark, dmin_triggered) and np.isclose(dmin_dark, dmin_dark_comp)):
+        raise ValueError(
+            f"High-resolution limits do not match: "
+            f"map_dark: {dmin_dark:.2f}, "
+            f"map_triggered: {dmin_triggered:.2f}, "
+            f"map_dark_comp: {dmin_dark_comp:.2f}. "
+            "Please ensure all maps are cut to the same resolution."
+        )
 
 def prepare_maps(
     unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
@@ -1062,8 +1077,8 @@ def prepare_maps(
     unscaled_dark, unscaled_triggered = check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
     map_dark_comp = get_calculated_dark_map(config)
 
-    # with warnings.catch_warnings():
-    # warnings.simplefilter("ignore")
+    assert_same_high_res_limit(unscaled_dark, unscaled_triggered, map_dark_comp)
+
     map_dark = scale_maps(reference_map=map_dark_comp, map_to_scale=unscaled_dark)
     map_triggered = scale_maps(
         reference_map=map_dark_comp, map_to_scale=unscaled_triggered
