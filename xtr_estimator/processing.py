@@ -36,6 +36,8 @@ from .configuration import (
     GeneralSettings,
 )
 
+from .utils import map_to_array
+
 logger = setup_logger()
 
 
@@ -678,9 +680,10 @@ def estimate_absolute_densities(
     # 1. Extract metadata and numpy representations
     cell: gemmi.UnitCell = map_model.cell  # type: ignore
     spacegroup: gemmi.SpaceGroup = map_model.spacegroup  # type: ignore
-    map_model_np = map_model.to_3d_numpy_map(map_sampling=map_sampling)
     map_exp_np = map_exp.to_3d_numpy_map(map_sampling=map_sampling)
-    grid_shape = map_model_np.shape
+    grid_shape = map_exp_np.shape
+    
+    map_model_np = map_to_array(map_model, grid_shape)
 
     # 2. Generate Masks
     logger.info("Generating protein and solvent masks...")

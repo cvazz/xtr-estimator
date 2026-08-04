@@ -8,6 +8,7 @@ from scipy.ndimage import convolve
 from meteor import rsmap
 from .logger import setup_logger
 from .configuration import Settings, MaskingSettings
+from .utils import grid_shape_for, map_to_array
 
 logger = setup_logger()
 
@@ -382,7 +383,7 @@ def make_inclusion_mask_real(
         )
     if dark_size_std_threshold:
         mask_total_before = np.sum(mask_np)
-        map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
+        map_dark_np = map_to_array(map_dark, diffmap_np.shape)
         mask_np = np.logical_and(mask_np, map_dark_np > dark_size_std_threshold)
         number_negative_darks = mask_total_before - np.sum(mask_np)
         log_text = ""
@@ -394,7 +395,7 @@ def make_inclusion_mask_real(
         exclusion_rows[-1]["excluded"] = int(number_negative_darks)
     else:
         mask_total_before = np.sum(mask_np)
-        map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
+        map_dark_np = map_to_array(map_dark, diffmap_np.shape)
         map_dark_threshold = 0
         mask_np = np.logical_and(mask_np, map_dark_np > map_dark_threshold)
         number_negative_darks = mask_total_before - np.sum(mask_np)
@@ -432,7 +433,7 @@ def make_inclusion_mask_real(
         }
     )
     if masking_config["exclude_large_occupancy_outliers"]:
-        map_dark_np = map_dark.to_3d_numpy_map(map_sampling=map_sampling)
+        map_dark_np = map_to_array(map_dark, diffmap_np.shape)
         mask_np_before = np.sum(mask_np)
         outliers = (
             np.where(map_dark_np != 0, -diffmap_np / map_dark_np, 0)

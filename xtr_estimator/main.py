@@ -110,13 +110,6 @@ def xtr_logic(
         inclusion_mask = prescribe_mask
 
     if config.plot.binary_background:
-        print(information)
-        rho_floor = get_rho_floor(map_dark, diffmap, config, information['solvent_level'])
-        import numpy as np
-        print(np.unique(rho_floor))
-        # fig, ax, prediction_tuple = plot_extrapolation_estimate_binary(
-        #     diffmap, map_dark, inclusion_mask, config=config, ax=ax, rho_floor=rho_floor
-        # )
         raise NotImplementedError("Binary background plotting with rho_floor is not implemented yet.")
     else:
         fig, ax, prediction_tuple = plot_extrapolation_estimate(
