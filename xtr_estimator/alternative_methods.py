@@ -553,9 +553,11 @@ def make_figure_vary_inside(input_data):
         advanced_nse = np.nan
 
     # --------------------------- Cell (1,1): Plot 4 ---------------------------
-    _, _, (vacuum_mean, vacuum_std) = plot_extrapolation_estimate(
+    _, _, predictions = plot_extrapolation_estimate(
         diffmap, map_dark, inclusion_mask_nse, config, compact=True
     )
+    (vacuum_mean, vacuum_std) = predictions["vacuum_mean"], predictions["vacuum_std"]
+
     return {
         "type": options["noise_type"],
         "snr": options["snr_factor"],

@@ -124,13 +124,39 @@ def _middle_index(cummean: dict, idx: Indices) -> int:
     return max(mi, idx.min_middle)
 
 
-def locate_prediction(cummean: dict, std_cutoff: float) -> tuple[float, float]:
+def locate_prediction(cummean: dict, std_cutoff: float) -> dict :
     """Replaces compact_v3 — same math the plot reports, so they can't diverge."""
     idx = locate_indices(cummean, std_cutoff)
     if not idx.has_middle:
-        return (np.nan, np.nan)
+        return dict(
+            estimate=np.nan,
+            std=np.nan,
+            relative_std=np.nan,
+            sigma_at_estimate=np.nan,
+            ratio_estimation_range=np.nan,
+            variation_range=np.nan,
+        )
     mi = _middle_index(cummean, idx)
-    return cummean["pseudo_sort"][mi], cummean["pseudo_std"][mi]
+
+    diff = cummean["diff_sigma"]
+    middle_x = -diff[mi]
+    std = cummean["pseudo_std"]
+    ratio_estimation_range = diff[0] / diff[b]
+    skip = cummean["number_sym_ops"]
+    b = idx.bottom
+    y = cummean["pseudo_sort"]
+    pseudo_range = y[: b + 1]
+    variation_range = np.min(pseudo_range[skip:]) / np.max(pseudo_range[skip:])
+    middle_mean = y[mi]
+    return dict(
+        estimate=middle_mean,
+        std=std[mi],
+        relative_std=std[mi] / middle_mean,
+        sigma_at_estimate=middle_x,
+        ratio_estimation_range=ratio_estimation_range,
+        variation_range=variation_range,
+    )
+
 
 
 # =========================================================================== #
@@ -332,7 +358,7 @@ def plot_thresholds(ax, bounds, colors, aesthetics):
 
 def annotate_optimum(
     ax, cummean, idx, colors, aesthetics, owns_figure=False
-) -> tuple[float, float]:
+) -> dict:
     box_kwargs = _stats_box(ax, aesthetics)
 
     if not idx.has_middle:
@@ -340,7 +366,14 @@ def annotate_optimum(
         error_msg += "estimation range \n"
         error_msg += "      too small"
         ax.text(0.95, 0.95, error_msg, **box_kwargs)
-        return (np.nan, np.nan)
+        return dict(
+            estimate=np.nan,
+            std=np.nan,
+            relative_std=np.nan,
+            sigma_at_estimate=np.nan,
+            ratio_estimation_range=np.nan,
+            variation_range=np.nan,
+        )
 
     diff = cummean["diff_sigma"]
     y = cummean["pseudo_sort"]
@@ -364,22 +397,31 @@ def annotate_optimum(
 
     text = rf" $\chi\, = {middle_mean:.3f}$"
     sig_chi = r"$\sigma_\chi$"
-    text += "\n"+rf"$\sigma_\chi = {std[mi]:.3f}$ ({std[mi] / middle_mean:.1%})"
+    text += "\n" + rf"$\sigma_\chi = {std[mi]:.3f}$ ({std[mi] / middle_mean:.1%})"
     skip = cummean["number_sym_ops"]
-    if np.min(pseudo_range[skip:]) / np.max(pseudo_range[skip:]) < 2 / 3:
+    variation_range = np.min(pseudo_range[skip:]) / np.max(pseudo_range[skip:])
+    if variation_range < 2 / 3:
         msg = "Warning: Large variation in estimates\nCheck the plot for details."
         logger.warning(msg)
         msg_short = "Large variation \n"
         msg_short += "   in estimates"
         text += f"\n{msg_short}"  # if owns_figure else ""
-    if diff[0] / diff[b] < 1.2:
+    ratio_estimation_range = diff[0] / diff[b]
+    if ratio_estimation_range < 1.2:
         msg = "Warning: Very small estimation range\nCheck the plot for details."
         logger.warning(msg)
-        msg_short = "      Very small \n" 
-        msg_short +="estimation range"
+        msg_short = "      Very small \n"
+        msg_short += "estimation range"
         text += f"\n{msg_short}"  # if owns_figure else ""
     ax.text(0.95, 0.95, text, **box_kwargs)
-    return (middle_mean, std[mi])
+    return dict(
+        estimate=middle_mean,
+        std=std[mi],
+        relative_std=std[mi] / middle_mean,
+        sigma_at_estimate=middle_x,
+        ratio_estimation_range=ratio_estimation_range,
+        variation_range=variation_range,
+    )
 
 
 def format_axes(ax, aesthetics, show_rho):
@@ -432,7 +474,7 @@ def apply_limits(ax, cummean, idx, bounds, plot_config):
 # =========================================================================== #
 def create_plot(
     stats, cummean, mode: Mode, ax=None, plot_config={}, return_both_ax=False
-) -> tuple[Figure, Axes, tuple[float, float]]:
+) -> tuple[Figure, Axes, dict]:
     idx = locate_indices(cummean, plot_config["std_cutoff"])
     bounds = compute_bounds(cummean)
 
@@ -479,7 +521,7 @@ def create_plot(
             fontsize=sizes["legend"],
             frameon=False,
         )
-
+    print(prediction)
     if return_both_ax:
         return fig, (ax, ax2), prediction
     return fig, ax, prediction
@@ -499,7 +541,7 @@ def plot_extrapolation_estimate(
     ax: Axes | None = None,
     compact: bool = False,
     return_both_ax: bool = False,
-) -> tuple[Figure | None, Axes | None, tuple[float, float]]:
+) -> tuple[Figure | None, Axes | None, dict]:
     sampling = config["general"]["map_sampling"]
     diffmap_np = diffmap.to_3d_numpy_map(map_sampling=sampling)
     map_dark_np = map_to_array(map_dark, diffmap_np.shape)
@@ -586,7 +628,9 @@ def decorate_cell(
                 fontsize=sizes["label"],
             )
     if cell.title and is_top:
-        ax.set_title(cell.title, fontsize=sizes["outside_title"], pad=sizes["tick"] * 1.5)
+        ax.set_title(
+            cell.title, fontsize=sizes["outside_title"], pad=sizes["tick"] * 1.5
+        )
     elif not is_top:
         ax.set_title("")
     if cell.row_label and is_left:
@@ -596,7 +640,7 @@ def decorate_cell(
         # if fig is None:
         t = ax.text(-0.4, 0.5, cell.row_label, transform=ax.transAxes, **kwargs)
         t.set_in_layout(True)
-        ax.set_ylabel("Extr. factor $\chi$")  
+        ax.set_ylabel(r"Extr. factor $\chi$")
         # else:
         #     y = (ax.get_position().y0 + ax.get_position().y1) * 0.6
         #     fig.text(0.00, y, cell.row_label, **kwargs)

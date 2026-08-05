@@ -112,10 +112,10 @@ def xtr_logic(
     if config.plot.binary_background:
         raise NotImplementedError("Binary background plotting with rho_floor is not implemented yet.")
     else:
-        fig, ax, prediction_tuple = plot_extrapolation_estimate(
+        fig, ax, predictions = plot_extrapolation_estimate(
             diffmap, map_dark, inclusion_mask, config=config, ax=ax
         )
-    return fig, ax, prediction_tuple, map_dark
+    return fig, ax, predictions, map_dark
 
 
 def execute_as_main(
@@ -123,7 +123,7 @@ def execute_as_main(
 ) -> None:
     """The actual processing logic."""
     # Ensure we have regular dict
-    fig, _, prediction_tuple, _ = xtr_logic(config, ax=None)
+    fig, _, predictions, _ = xtr_logic(config, ax=None)
     filename = f"{config['general']['name_machine']}_extrapolation_estimate.png"
     full_filename = Path(config["general"]["plot_folder"]) / filename
 
@@ -133,7 +133,7 @@ def execute_as_main(
         plt.show()
     else:
         plt.close(fig)
-    return prediction_tuple
+    return predictions
 
 
 def parse_settings(

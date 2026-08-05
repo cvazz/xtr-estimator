@@ -82,6 +82,7 @@ class MaskingSettings(BaseModelDictlike):
     dark_size_threshold: Optional[float] = None
     exclude_positive_diffmap: Optional[bool] = None
     exclude_large_occupancy_outliers: Optional[float] = False
+    return_stats: Optional[bool] = False
 
     @classmethod
     def no_mask(cls):

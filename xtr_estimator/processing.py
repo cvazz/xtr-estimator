@@ -5,9 +5,9 @@ import reciprocalspaceship as rs
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize_scalar
 from pathlib import Path
+
 import copy
-
-
+import json
 import pickle
 import os
 import time
@@ -106,7 +106,7 @@ def get_maps(
         )
         ds_dark["PHIC"] = map_dark_comp.phases
         ds_triggered["PHIC"] = map_dark_comp.phases
-    
+
     return get_maps_sf(ds_dark, ds_triggered, input_files_config, high_resolution_limit)
 
 
@@ -156,14 +156,13 @@ def check_highres_limit(
     dmin_dark = map_dark.compute_dHKL().min()
     dmin_triggered = map_triggered.compute_dHKL().min()
     factor = 100
-    
+
     high_res_limit = float(np.ceil(max(dmin_dark, dmin_triggered) * factor) / factor)
 
-
     # if not np.isclose(dmin_dark, dmin_triggered):
-        # logger.warning(
-        #     f"Different resolution limits in dark and triggered maps: {dmin_dark:.4f} A vs {dmin_triggered:.4f} A"
-        # )
+    # logger.warning(
+    #     f"Different resolution limits in dark and triggered maps: {dmin_dark:.4f} A vs {dmin_triggered:.4f} A"
+    # )
     map_dark = cut_resolution(map_dark, high_resolution_limit=high_res_limit)  # type: ignore
     map_triggered = cut_resolution(
         map_triggered, high_resolution_limit=high_res_limit
@@ -288,11 +287,14 @@ def calculate_diffmaps(
             if weight_mode == WeightMode.optimize and meta_loc != "":
                 with open(meta_loc, "wb") as f:
                     pickle.dump(meta, f)
-            ittv_weights= np.array([0.8, 1, 1.3, 1.55,1.7, 2])*meta.tv_weight_optimization.optimal_parameter_value
-# [ 0.8, 1, 1.3, 1.55, 1.7, 2]
+            ittv_weights = (
+                np.array([0.8, 1, 1.3, 1.55, 1.7, 2])
+                * meta.tv_weight_optimization.optimal_parameter_value
+            )
+        # [ 0.8, 1, 1.3, 1.55, 1.7, 2]
         else:
             ittv_weights = parameters["ittv_weights"]
-        if diffmap_mode=="it_tv":
+        if diffmap_mode == "it_tv":
             diffmap = iterative_tv_denoising(map_set, ittv_weights)
             logger.warning(
                 "it_tv mode does not currently support parameter loading/saving; running with default parameters."
@@ -415,7 +417,6 @@ def combined_diffmap_calc(
         processing_config = MapProcessingSettings(**processing_config)
     diffmap_type = processing_config["diffmap_type"]
     filepath = Path(diffmap_file_name(processing_config, general_config))
-    logger.info(f"Checking for existing diffmap at {filepath}")
     if (
         filepath.exists()
         and not processing_config["recalculate_map_from_scratch"]
@@ -456,7 +457,7 @@ def autoshift_rsmap_old(
     general_config: dict,
     map_dark_comp: rsmap.Map | None = None,
     ignore_mask: np.ndarray | bool = False,
-    diagnostic_plots: bool = False,
+    # diagnostic_plots: Path = False,
 ) -> tuple[rsmap.Map, float]:
     map_sampling = general_config["map_sampling"]
     pdbloc_dark = general_config["pdbloc_dark"]
@@ -478,10 +479,10 @@ def autoshift_rsmap_old(
         logger.warning("All voxels are ignored in autoshift; no shift applied.")
         return map_in, 0
     shifts = map_dark_comp_np[include_mask] - rsmap_np[include_mask]
-    if diagnostic_plots:
-        plt.figure()
-        plt.plot(map_dark_comp_np[include_mask], shifts, ".", alpha=0.5)
-        plt.show()
+    # if diagnostic_plots:
+    #     plt.figure()
+    #     plt.plot(map_dark_comp_np[include_mask], shifts, ".", alpha=0.5)
+    #     plt.show()
     mean_shift = np.mean(shifts)
 
     zero_freq = mean_shift * map_in.cell.volume  # type: ignore
@@ -598,7 +599,7 @@ def calculate_rho_bulk(
     cell: gemmi.UnitCell,
     spacegroup: gemmi.SpaceGroup,
     dmin: float,
-    plot: bool = False,
+    plot_loc: Path |str = None,
 ):
     """
     Optimizes rho_bulk to minimize low-resolution differences between the model
@@ -633,10 +634,9 @@ def calculate_rho_bulk(
     )
 
     best_rho_bulk = result.x
-    logger.info(f"Optimal rho_bulk: {best_rho_bulk:.4f} e-/Å³")
 
     # Optional plotting of the optimization landscape
-    if plot:
+    if plot_loc is not None:
         rho_bulks = np.linspace(0.2, 0.5, 30)
         errors = [target_scaling_function(b) for b in rho_bulks]
 
@@ -653,7 +653,8 @@ def calculate_rho_bulk(
             label=f"Min: {best_rho_bulk:.3f}",
         )
         plt.legend()
-        plt.show()
+        plt.savefig(plot_loc)
+        plt.close()
 
     return best_rho_bulk
 
@@ -669,7 +670,7 @@ def estimate_absolute_densities(
     pdb_file: str,
     dmin: float,
     map_sampling: int = 3,
-    plot: bool = True,
+    plot_loc: str | Path = None,
 ):
     """
     Master function orchestrating the calculation of both rho_atom (protein offset)
@@ -682,7 +683,7 @@ def estimate_absolute_densities(
     spacegroup: gemmi.SpaceGroup = map_model.spacegroup  # type: ignore
     map_exp_np = map_exp.to_3d_numpy_map(map_sampling=map_sampling)
     grid_shape = map_exp_np.shape
-    
+
     map_model_np = map_to_array(map_model, grid_shape)
 
     # 2. Generate Masks
@@ -691,7 +692,7 @@ def estimate_absolute_densities(
     # protein_mask = ~support_from_masker(pdb_file, map_dark_comp_np.shape)
 
     try:
-    # 3. Calculate rho_atom (Mean shift in the protein region)
+        # 3. Calculate rho_atom (Mean shift in the protein region)
         rho_atom_shift = calculate_rho_atom(map_exp_np, map_model_np, protein_mask)
     except IndexError as e:
         raise e
@@ -709,7 +710,7 @@ def estimate_absolute_densities(
         cell=cell,
         spacegroup=spacegroup,
         dmin=dmin,
-        plot=plot,
+        plot_loc=plot_loc 
     )
     share_solvent = np.mean(solvent_mask)
     rho_comb = rho_atom + share_solvent * rho_bulk
@@ -726,14 +727,29 @@ def estimate_absolute_densities(
     }
 
 
-def get_name_pkl(
+def get_name_any(
     general_config: GeneralSettings, input_file_name: str, amplitude_column: str
 ):
     evaluation_path_basis, name = get_meta_loc(general_config)
     filename = input_file_name.split("/")[-1].split(".")[0]
-    dmin = general_config["high_resolution_limit"]
-    name = f"{filename}_{amplitude_column}_{dmin}.pkl"
+    dmin = general_config.high_resolution_limit
+    name = f"{filename}_{amplitude_column}_{dmin:.4f}"
     return evaluation_path_basis + name
+
+
+def get_name_json(
+    general_config: GeneralSettings, input_file_name: str, amplitude_column: str
+):
+
+    return get_name_any(general_config, input_file_name, amplitude_column) + ".json"
+
+
+def get_name_png_bulk(
+    general_config: GeneralSettings, input_file_name: str, amplitude_column: str
+):
+
+    return get_name_any(general_config, input_file_name, amplitude_column) + "bulk.png"
+
 
 # def enforce_f000(map_in, zero_freq):
 #     zero_row = {
@@ -749,6 +765,7 @@ def fix_hkl_dtypes(ds):
     ds = ds.reset_index().infer_mtz_dtypes()
     return ds.set_index(list(names))
 
+
 def enforce_f000(map_in, zero_freq):
     if map_in.has_uncertainties:
         map_in.loc[(0, 0, 0)] = {
@@ -760,7 +777,7 @@ def enforce_f000(map_in, zero_freq):
         map_in.loc[(0, 0, 0)] = {
             map_in.amplitude_column_name: zero_freq,
             map_in.phase_column_name: 0,
-    }
+        }
     map_in = fix_hkl_dtypes(map_in)
 
     return map_in
@@ -768,49 +785,50 @@ def enforce_f000(map_in, zero_freq):
 
 def autoshift_rsmap(
     map_in: rsmap.Map,
-    general_config: dict,
+    general_config: GeneralSettings,
     input_file_name: str,
     amplitude_column: str,
     map_dark_comp: rsmap.Map | None = None,
-    diagnostic_plots: bool = False,
 ):
-    solvent_loc = get_name_pkl(general_config, input_file_name, amplitude_column)
-    if os.path.exists(solvent_loc):
-        with open(solvent_loc, "rb") as f:
-            estimates = pickle.load(f)
+    solvent_loc = get_name_json(general_config, input_file_name, amplitude_column)
+    plot_loc = get_name_png_bulk(general_config, input_file_name, amplitude_column)
+    if Path(solvent_loc).exists():
+        with open(solvent_loc, "r") as f:
+            estimates = json.load(f)
     else:
         estimates = calculate_autoshift_rsmap(
             map_in=map_in,
             general_config=general_config,
             map_dark_comp=map_dark_comp,
-            diagnostic_plots=diagnostic_plots,
+            plot_loc=plot_loc if plot_loc else None,
         )
-        with open(solvent_loc, "wb") as f:
-            pickle.dump(estimates, f)
+        estimates = {k: float(v) for k, v in estimates.items()}
+        with open(solvent_loc, "w") as f:
+            json.dump(estimates, f)
     map_in = enforce_f000(map_in, estimates["f000"])
     return map_in, estimates["rho_bulk"]
 
 
 def calculate_autoshift_rsmap(
     map_in: rsmap.Map,
-    general_config: dict,
+    general_config: GeneralSettings,
     map_dark_comp: rsmap.Map | None = None,
-    diagnostic_plots: bool = False,
+    plot_loc: str | None = None,
 ) -> tuple[rsmap.Map, float]:
 
     if map_dark_comp is None:
-        struc = gemmi.read_pdb(general_config["pdbloc_dark"])
+        struc = gemmi.read_pdb(general_config.pdbloc_dark)
         map_dark_comp = gemmi_structure_to_calculated_map(
             struc,
-            high_resolution_limit=general_config["high_resolution_limit"],
+            high_resolution_limit=general_config.high_resolution_limit,
         )
     estimates = estimate_absolute_densities(
         map_in,
         map_dark_comp,
-        general_config["pdbloc_dark"],
-        general_config["high_resolution_limit"],
-        map_sampling=general_config["map_sampling"],
-        plot=diagnostic_plots,
+        general_config.pdbloc_dark,
+        general_config.high_resolution_limit,
+        map_sampling=general_config.map_sampling,
+        plot_loc=plot_loc
     )
     if np.abs(estimates["rho_abs_shift"] - estimates["rho_comb"]) > 0.01:
         log_txt = f"Estimated rho_atom shift ({estimates['rho_abs_shift']:.4f}) "
@@ -917,11 +935,13 @@ def get_calculated_dark_map(config: dict, struc=None) -> rsmap.Map:
     """Helper to generate the reference calculated map from structure."""
     if struc is None:
         struc = gemmi.read_pdb(config["input_files"]["pdb_dark"])
-    struc_map =  gemmi_structure_to_calculated_map(
+    struc_map = gemmi_structure_to_calculated_map(
         struc,
         high_resolution_limit=config["general"]["high_resolution_limit"] - 0.01,
     )
-    return cut_resolution(struc_map, high_resolution_limit=config["general"]["high_resolution_limit"])
+    return cut_resolution(
+        struc_map, high_resolution_limit=config["general"]["high_resolution_limit"]
+    )
 
 
 def apply_autoshift(
@@ -1056,7 +1076,13 @@ def fill_na_with_model(
 
     return filled_map
 
-def assert_same_high_res_limit(map_dark: rsmap.Map, map_triggered: rsmap.Map, map_dark_comp: rsmap.Map, map_sampling: int = 5):
+
+def assert_same_high_res_limit(
+    map_dark: rsmap.Map,
+    map_triggered: rsmap.Map,
+    map_dark_comp: rsmap.Map,
+    map_sampling: int = 5,
+):
     """Ensure that all maps have the same high-resolution limit."""
     dmin_dark = np.min(map_dark.compute_dHKL())
     dmin_triggered = np.min(map_triggered.compute_dHKL())
@@ -1073,6 +1099,8 @@ def assert_same_high_res_limit(map_dark: rsmap.Map, map_triggered: rsmap.Map, ma
             f"map_dark_comp: {dmin_dark_comp:.5f}, ({shape_dark_comp}) "
             "Please ensure all maps are cut to the same resolution."
         )
+
+
 def prepare_maps(
     unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
 ) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map, dict]:
@@ -1081,7 +1109,9 @@ def prepare_maps(
     diffmap_first = processing_config["calculate_diffmap_before_f000"]
     dark_mean_correction = processing_config["dark_mean_correction"]
 
-    unscaled_dark, unscaled_triggered = check_highres_limit(unscaled_dark, unscaled_triggered, config["general"])
+    unscaled_dark, unscaled_triggered = check_highres_limit(
+        unscaled_dark, unscaled_triggered, config["general"]
+    )
     map_dark_comp = get_calculated_dark_map(config)
 
     # assert_same_high_res_limit(unscaled_dark, unscaled_triggered, map_dark_comp)
@@ -1090,7 +1120,6 @@ def prepare_maps(
     map_triggered = scale_maps(
         reference_map=map_dark_comp, map_to_scale=unscaled_triggered
     )
-
 
     if processing_config["fill_NA_with_model"]:
         # raise NotImplementedError("fill_NA_with_model is not yet implemented.")
@@ -1180,20 +1209,17 @@ def get_maps_diff_and_dark(config, map_dark=None):
 
     estimates = None
     if map_dark is not None:
-        logger.info("hi")
-        solvent_loc = get_name_pkl(
+        solvent_loc = get_name_json(
             config.general,
             config.input_files.map_dark,
             config.input_files.columns_dark.amplitude_column,
         )
         if os.path.exists(solvent_loc):
-            logger.info("here")
             map_dark = copy.deepcopy(map_dark)
-            with open(solvent_loc, "rb") as f:
-                estimates = pickle.load(f)
+            with open(solvent_loc, "r") as f:
+                estimates = json.load(f)
             map_dark = enforce_f000(map_dark, estimates["f000"])
             bulk_solvent_level = estimates["rho_bulk"]
-            logger.info(bulk_solvent_level)
 
     if estimates is None:
         map_dark, bulk_solvent_level = get_map_dark(config)
