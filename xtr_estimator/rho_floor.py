@@ -9,7 +9,7 @@
 #
 # Convention, as elsewhere in the module: the "true" map stays an rsmap.Map,
 # but everything here is a real-space operation and therefore works on numpy
-# arrays obtained via Map.to_3d_numpy_map(map_sampling=...). Functions stay
+# arrays. Functions stay
 # independent of concrete voxel size by taking the gemmi.UnitCell and using
 # voxel_volume() to convert physical lengths (A) into voxel counts.
 # ============================================================================
@@ -244,20 +244,6 @@ def estimate_rho_floor(
     return rho_floor, info
 
 
-# ----------------------------------------------------------------------------
-# usage sketch (drop into the existing pipeline; not executed here)
-# ----------------------------------------------------------------------------
-# ms        = config["general"]["map_sampling"]
-# diff_np   = diffmap.to_3d_numpy_map(map_sampling=ms)
-# rho0_np   = map_dark.to_3d_numpy_map(map_sampling=ms)          # F000-corrected
-# _, solv   = generate_masks(pdb_file, rho0_np.shape, map_dark.cell, map_dark.spacegroup)
-# rho_bulk  = estimate_absolute_densities(...)["rho_bulk"]       # already available
-#
-# rho_floor, info = estimate_rho_floor(
-#     diff_np, rho0_np, solv, map_dark.cell,
-#     floor_mode="constant", rho_bulk=rho_bulk,
-# )
-# chi = np.where(info["neg_mask"], -diff_np / (rho0_np - rho_floor), np.nan)
 
 def get_rho_floor(map_dark, diffmap, config, solvent_level):
     if solvent_level is np.nan:

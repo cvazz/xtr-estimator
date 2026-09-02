@@ -427,6 +427,7 @@ def annotate_optimum(
 def format_axes(ax, aesthetics, show_rho):
     sizes = aesthetics.resolved()
     ax.set_ylabel(f"Extrapolation factor  {CHI}", fontsize=sizes["label"])
+    ax.set_xlabel(r"Difference Map $\Delta \rho$ [r.m.s.d.]", fontsize=sizes["label"])
     ax.set_xlabel(r"Difference Map $\Delta \rho$ [RMSD]", fontsize=sizes["label"])
     tk = dict(
         transform=ax.transAxes,
@@ -436,8 +437,8 @@ def format_axes(ax, aesthetics, show_rho):
         bbox=dict(boxstyle="round", facecolor="white", alpha=aesthetics.anno_alpha),
     )
     if show_rho:
-        0.25, 0.10
-        0.95, 0.65
+        # 0.25, 0.10
+        # 0.95, 0.65
         x, y = aesthetics.solvent.large
         # aesthetics.rho_solvent.large
         ax.text(x, y, r"$\rho_0>\rho_{solvent}$", **tk)
@@ -535,7 +536,7 @@ def plot_extrapolation_estimate(
     diffmap: rsmap.Map,
     map_dark: rsmap.Map,
     inclusion_mask: np.ndarray,
-    config: dict,
+    config: Settings | dict,
     mode: Mode = SIMPLE,
     rho_floor: np.ndarray | None = None,
     ax: Axes | None = None,

@@ -128,7 +128,7 @@ class MaskingSettings(BaseModelDictlike):
 
 
 class MapProcessingSettings(BaseModelDictlike):
-    diffmap_type: Literal["tv", "it_tv", "vanilla", "kweighted"] = "tv"
+    diffmap_type: Literal["tv", "it_tv", "vanilla", "kweighted", "it_with_tv_seed"] = "tv"
     simple_dark_correction: bool = False
     dark_mean_correction: bool = True
     calculate_diffmap_before_f000: bool = False
@@ -138,6 +138,8 @@ class MapProcessingSettings(BaseModelDictlike):
     enforce_kweight: float | None = None
     enforce_tvweight: float | None = None
     enforce_ittv_weights: List[float] = [0.001, 0.01, 0.1]
+    enforce_after_seed_weight: float = 0.05
+    ittv_max_iterations: int = 20
 
 
 class FontMultipliers(BaseModelDictlike):

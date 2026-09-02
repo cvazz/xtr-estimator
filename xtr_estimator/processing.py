@@ -35,6 +35,7 @@ from .configuration import (
     Settings,
     GeneralSettings,
 )
+from .xtr_maps import adding_maps
 
 from .utils import map_to_array
 
@@ -177,10 +178,18 @@ def check_highres_limit(
     return map_dark, map_triggered
 
 
-def iterative_tv_denoising(map_set: DiffMapSet, tv_weights_to_scan: list):
+def iterative_tv_denoising(
+    map_set: DiffMapSet,
+    tv_weights_to_scan: list,
+    diffmap_start: rsmap.Map | None = None,
+    max_iterations: int = 20,
+) -> rsmap.Map:
+    if diffmap_start is not None:
+        map_set.derivative = adding_maps(map_set.native, diffmap_start)
+
     denoiser = IterativeTvDenoiser(
         tv_weights_to_scan=tv_weights_to_scan,
-        max_iterations=20,
+        max_iterations=max_iterations,
         verbose=True,
     )
     map_set.derivative, it_tv_metadata = denoiser(
@@ -198,18 +207,16 @@ def calculate_diffmaps(
     map_triggered: rsmap.Map,
     map_dark_comp: rsmap.Map,
     meta_loc: str = "",
-    diffmap_mode: str = "kweighted",
-    parameters: dict = None,
+    processing_config: MapProcessingSettings | dict = {},
 ):
+    if isinstance(processing_config, dict):
+        processing_config = MapProcessingSettings(**processing_config)
 
-    if diffmap_mode == "vanilla":
-        return compute_difference_map(derivative=map_triggered, native=map_dark)
+    diffmap_mode = processing_config["diffmap_type"]
 
-    if parameters is None:
-        parameters = {}
 
-    overwrite_solution = parameters.get("overwrite_solution", False)
-    use_dict_params = bool(parameters.get("k_weight", False))
+    overwrite_solution = processing_config.recalculate_map_from_scratch
+    use_dict_params = bool(processing_config.enforce_kweight)
     meta_loc_exists = os.path.exists(meta_loc)
     use_file_params = meta_loc_exists and not overwrite_solution
     logger.info(
@@ -229,8 +236,8 @@ def calculate_diffmaps(
 
     if use_dict_params:
         weight_mode = WeightMode.fixed
-        opt_k = parameters.get("k_weight")
-        opt_tv = parameters.get("tv_weight", None)
+        opt_k = processing_config.enforce_kweight
+        opt_tv = processing_config.enforce_tvweight
 
         if opt_tv is None and diffmap_mode in ["tv"]:
             raise ValueError("Specify both tv_weight and k_weight when using tv")
@@ -273,9 +280,12 @@ def calculate_diffmaps(
         )
         return diffmap
 
-    elif diffmap_mode in ["tv", "it_tv"]:
+    elif diffmap_mode in ["tv", "it_tv", "it_with_tv_seed"]:
         # Execute the chosen method with a single parameterized call
-        if diffmap_mode == "tv" or parameters.get("ittv_weights", None) is None:
+        if (
+            diffmap_mode in ["tv", "it_with_tv_seed"]
+            or processing_config.ittv_weights is None
+        ):
             diffmap, meta = compute_meteor_difference_map(
                 map_set,
                 kweight_mode=weight_mode,
@@ -287,18 +297,22 @@ def calculate_diffmaps(
             if weight_mode == WeightMode.optimize and meta_loc != "":
                 with open(meta_loc, "wb") as f:
                     pickle.dump(meta, f)
-            ittv_weights = (
-                np.array([0.8, 1, 1.3, 1.55, 1.7, 2])
-                * meta.tv_weight_optimization.optimal_parameter_value
-            )
+            opt_tv = meta.tv_weight_optimization.optimal_parameter_value
+            ittv_weights = np.array([0.8, 1, 1.3, 1.55, 1.7, 2]) * opt_tv
         # [ 0.8, 1, 1.3, 1.55, 1.7, 2]
+            if diffmap_mode == "it_with_tv_seed":
+                ittv_weights = [processing_config.enforce_after_seed_weight * opt_tv]
+                diffmap = iterative_tv_denoising(
+                    map_set, ittv_weights, diffmap_start=diffmap, max_iterations=processing_config.ittv_max_iterations
+                )
+                logger.info("Applied iterative TV denoising with seed weights.")
+                logger.info(f"{diffmap}")
         else:
-            ittv_weights = parameters["ittv_weights"]
+            ittv_weights = processing_config.ittv_weights
+            diffmap = None
+
         if diffmap_mode == "it_tv":
             diffmap = iterative_tv_denoising(map_set, ittv_weights)
-            logger.warning(
-                "it_tv mode does not currently support parameter loading/saving; running with default parameters."
-            )
 
         return diffmap
 
@@ -307,85 +321,6 @@ def calculate_diffmaps(
             f"Unknown diffmap_mode: '{diffmap_mode}'. Valid options are 'kweighted', 'tv', or 'it_tv'."
         )
 
-
-def calculate_diffmaps_deprecated(
-    map_dark: rsmap.Map,
-    map_triggered: rsmap.Map,
-    map_dark_comp: rsmap.Map,
-    meta_loc: str = "",
-    only_kweighted: bool = False,
-    parameters: dict = {},
-):
-    overwrite_solution = parameters.get("overwrite_solution", False)
-    calculate_again = bool(parameters.get("k_weight", False)) or (
-        os.path.exists(meta_loc) and not overwrite_solution
-    )
-
-    map_set = DiffMapSet(map_dark, map_triggered, map_dark_comp)
-    if calculate_again:
-        if parameters.get("k_weight", False):
-            opt_k = parameters.get("k_weight")
-            opt_tv = parameters.get("tv_weight", None)
-            only_kweighted = opt_tv is None
-            logger.info(
-                f"Using provided k_weight: {opt_k}, tv_weight: {opt_tv}, only_kweighted: {only_kweighted}"
-            )
-
-        elif os.path.exists(meta_loc) and not overwrite_solution:
-            with open(meta_loc, "rb") as f:
-                meta = pickle.load(f)
-                logger.warning("Loaded meta from file:")
-            # Extract the optimal parameters
-            opt_k = (
-                meta.k_parameter_optimization.optimal_parameter_value
-                if meta.k_parameter_optimization
-                else None
-            )
-            opt_tv = meta.tv_weight_optimization.optimal_parameter_value
-            logger.info(
-                f"loading: {opt_k}, tv_weight: {opt_tv}, only_kweighted: {only_kweighted}"
-            )
-        else:
-            raise ValueError("No parameters provided and no meta file found.")
-
-        if only_kweighted:
-            diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
-                kweight_mode=WeightMode.fixed,
-                kweight_parameter=opt_k,
-                mapset=map_set,
-            )
-            return diffmap
-        else:
-            # 2) Rerun with fixed parameters (no iteration/scan)
-            final_map, _ = compute_meteor_difference_map(
-                map_set,
-                kweight_mode=WeightMode.fixed,
-                kweight_parameter=(
-                    opt_k if opt_k is not None else 0.0
-                ),  # or omit if you don't want k-weighting
-                tv_denoise_mode=WeightMode.fixed,
-                tv_weight=opt_tv,
-            )
-    elif only_kweighted:
-        logger.warning("Meta file not saved, will calculate again")
-        diffmap, kparameter_metadata = kweight_diffmap_according_to_mode(
-            kweight_mode=WeightMode.optimize,
-            # kweight_parameter=opt_k,
-            mapset=map_set,
-        )
-        return diffmap
-    else:
-        final_map, meta = compute_meteor_difference_map(
-            map_set,
-            kweight_mode=WeightMode.optimize,
-            tv_denoise_mode=WeightMode.optimize,
-        )
-
-        if meta_loc != "":
-            with open(meta_loc, "wb") as f:
-                pickle.dump(meta, f)
-    logger.info(f"diffmap has uncertainties: {final_map.has_uncertainties}")
-    return final_map
 
 
 def get_meta_loc(general_config: dict | GeneralSettings):
@@ -438,12 +373,7 @@ def combined_diffmap_calc(
         map_triggered,
         map_dark_comp,
         meta_loc,
-        diffmap_mode=diffmap_type,
-        parameters={
-            "k_weight": processing_config.enforce_kweight,
-            "tv_weight": processing_config.enforce_tvweight,
-            "ittv_weights": processing_config.enforce_ittv_weights,
-        },
+        processing_config=processing_config,
     )
 
     diffmap.write_mtz(filepath)
@@ -599,7 +529,7 @@ def calculate_rho_bulk(
     cell: gemmi.UnitCell,
     spacegroup: gemmi.SpaceGroup,
     dmin: float,
-    plot_loc: Path |str = None,
+    plot_loc: Path | str = None,
 ):
     """
     Optimizes rho_bulk to minimize low-resolution differences between the model
@@ -710,7 +640,7 @@ def estimate_absolute_densities(
         cell=cell,
         spacegroup=spacegroup,
         dmin=dmin,
-        plot_loc=plot_loc 
+        plot_loc=plot_loc,
     )
     share_solvent = np.mean(solvent_mask)
     rho_comb = rho_atom + share_solvent * rho_bulk
@@ -828,7 +758,7 @@ def calculate_autoshift_rsmap(
         general_config.pdbloc_dark,
         general_config.high_resolution_limit,
         map_sampling=general_config.map_sampling,
-        plot_loc=plot_loc
+        plot_loc=plot_loc,
     )
     if np.abs(estimates["rho_abs_shift"] - estimates["rho_comb"]) > 0.01:
         log_txt = f"Estimated rho_atom shift ({estimates['rho_abs_shift']:.4f}) "
@@ -1102,7 +1032,7 @@ def assert_same_high_res_limit(
 
 
 def prepare_maps(
-    unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: dict
+    unscaled_dark: rsmap.Map, unscaled_triggered: rsmap.Map, config: Settings | dict
 ) -> tuple[rsmap.Map, rsmap.Map, rsmap.Map, dict]:
 
     processing_config = config["map_processing"]
